@@ -3,8 +3,18 @@ import {reportError} from './log.js';
 import {parseMetaJSON} from './meta-json.js';
 const ORIGIN='https://atlas-pasam-v1.pages.dev',CALLBACK=ORIGIN+'/api/instagram/callback',APP='1162087043047938';
 const SCOPES='instagram_business_basic,instagram_business_manage_insights';
+const PROVIDER_ORIGINS=new Set(['https://www.instagram.com','https://instagram.com','https://www.facebook.com','https://facebook.com']);
 const cookie=(value,age=600)=>`__Host-atlas-ig=${value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${age}`;
 const json=(body,status=200,extra={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Referrer-Policy':'no-referrer',...extra}});
+function sameOriginStart(request){
+ const origin=request.headers.get('Origin');
+ if(origin&&origin!==ORIGIN)return false;
+ const referer=request.headers.get('Referer');
+ if(!referer)return true;
+ let source;
+ try{source=new URL(referer).origin;}catch{return false;}
+ return source===ORIGIN||PROVIDER_ORIGINS.has(source);
+}
 async function hash(state,env){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(state+':'+env.SESSION_SECRET+':'+env.ATLAS_ACCESS_PASSWORD)))).map(b=>b.toString(16).padStart(2,'0')).join('');}
 export async function startInstagramOAuth(request,env){
  if(new URL(request.url).origin!==ORIGIN)return json({error:'Instagram bağlantısını https://atlas-pasam-v1.pages.dev adresindeki ATLAS üzerinden başlatın.'},400);
@@ -21,6 +31,7 @@ export async function finishInstagramOAuth(request,env,upstream=fetch,requestId=
  const url=new URL(request.url),state=url.searchParams.get('state'),code=url.searchParams.get('code');
  const saved=request.headers.get('Cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith('__Host-atlas-ig='))?.slice(16);
  const finish=result=>new Response(null,{status:303,headers:{Location:ORIGIN+'/?instagram='+result,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':cookie('',0)}});
+ if(!sameOriginStart(request))return json({error:'Bu kaynaktan işlem yapılamaz.'},403);
  if(url.origin!==ORIGIN||!state||! /^[a-f0-9]{64}$/.test(state)||saved!==state||!env.MEMORY_DB||!env.INSTAGRAM_APP_SECRET)return finish('state');
  const claimed=await env.MEMORY_DB.prepare('DELETE FROM atlas_instagram_oauth WHERE state_hash=? AND expires_at>=? RETURNING state_hash').bind(await hash(state,env),Math.floor(Date.now()/1000)).first();
  if(!claimed)return finish('state');
