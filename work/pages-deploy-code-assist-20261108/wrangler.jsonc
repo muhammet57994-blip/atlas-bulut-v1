@@ -1,0 +1,6 @@
+{
+  "name": "atlas-pasam-v1",
+  "compatibility_date": "2025-10-01",
+  "pages_build_output_dir": "./public",
+  "services": [{ "binding": "ATLAS", "service": "atlas-bulut-v1" }]
+}
