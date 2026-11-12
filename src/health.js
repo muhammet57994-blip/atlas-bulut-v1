@@ -52,6 +52,29 @@ function migrationState(present) {
   };
 }
 
+// The version a database last applied in an unbroken run from the first file.
+function unbrokenVersion(versions) {
+  let version = '0000';
+  for (const migration of MIGRATIONS) {
+    if (!versions.has(migration.version)) break;
+    version = migration.version;
+  }
+  return version;
+}
+
+// Wrangler keeps applied migrations in d1_migrations. Reading that ledger tells
+// the real live version even when the answer only moves forward through ALTER
+// statements, which leave no new table behind. Absent ledger means the database
+// was built by executing the SQL files directly, so the caller falls back to the
+// table-based run above.
+async function appliedLedger(env) {
+  const table = await env.MEMORY_DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='d1_migrations'").first();
+  if (!table) return null;
+  const rows = (await env.MEMORY_DB.prepare('SELECT name FROM d1_migrations').all()).results;
+  const names = new Set((Array.isArray(rows) ? rows : []).map(row => row?.name).filter(name => typeof name === 'string'));
+  return new Set(MIGRATIONS.filter(migration => names.has(migration.name)).map(migration => migration.version));
+}
+
 export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {}) {
   const report = {
     service: 'atlas',
@@ -62,8 +85,11 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
       approved: env?.GEMINI_MODEL === undefined || env?.GEMINI_MODEL === APPROVED_MODEL
     },
     schema: {
-      version: SCHEMA_VERSION,
+      version: null,
       appliedVersion: null,
+      expectedVersion: SCHEMA_VERSION,
+      upToDate: false,
+      source: 'none',
       expected: REQUIRED_TABLES.length,
       applied: 0,
       missing: [...REQUIRED_TABLES],
@@ -79,9 +105,15 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
       const present = new Set((Array.isArray(rows) ? rows : []).map(row => row?.name).filter(name => typeof name === 'string'));
       report.db = {reachable: true, latencyMs: Math.max(0, Date.now() - started)};
       const state = migrationState(present);
+      let ledger = null;
+      try { ledger = await appliedLedger(env); } catch { ledger = null; }
+      const version = ledger ? unbrokenVersion(ledger) : state.appliedVersion;
+      report.schema.version = version;
       report.schema.applied = REQUIRED_TABLES.filter(name => present.has(name)).length;
       report.schema.missing = REQUIRED_TABLES.filter(name => !present.has(name));
-      report.schema.appliedVersion = state.appliedVersion;
+      report.schema.appliedVersion = version;
+      report.schema.source = ledger ? 'd1_migrations' : 'tables';
+      report.schema.upToDate = version === SCHEMA_VERSION && report.schema.missing.length === 0;
       report.schema.migrations = {applied: state.applied, missing: state.missing, ahead: state.ahead};
     } catch (error) {
       // The diagnosis itself must not fail the request, and the driver message is
@@ -89,6 +121,6 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
       reportError({stage: 'health.db', requestId, error, meta: {table: 'sqlite_master'}});
     }
   }
-  const ok = report.ready && report.model.configured && report.model.approved && report.db.reachable && report.schema.missing.length === 0;
+  const ok = report.ready && report.model.configured && report.model.approved && report.db.reachable && report.schema.upToDate;
   return {status: ok ? 200 : 503, payload: {ok, ...report}};
 }

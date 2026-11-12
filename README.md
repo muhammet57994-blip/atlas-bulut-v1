@@ -28,7 +28,7 @@ Yedekler, kullanıcı düğmeye bastığında tek atomik D1 okumasından cihazı
 
 Yeni organize/backup yolları oturum, aynı kaynak, gövde boyutu ve hız kontrolü altındadır. Karışık işlem gövdeleri reddedilir; management/lists/daily/focus imzaları amaç ayrımlıdır. Tüm yeni kayıt/değişiklik/hesaplama/dışa aktarma işlemleri model çağırmaz. Mevcut Gemini Live/Algieba ve ücretsiz servis sınırları korunur; ücretli servis veya abonelik eklenmedi. Masaüstü yalnızca mevcut kanonik Pages adresine ortak API aktarımı yapar.
 
-590 otomatik test geçti. Ayrı RAM deneme ortamında gerçek tarayıcıyla harcama düzeltme/geri alma, proje oluşturma/adım tamamlama ve JSON indirme doğrulandı; 390×844 mobil görünüm incelendi. Üretime test verisi yazılmadı. 0011/0012 şema güncellemeleri uygulandı; sürüm 4455ecc2-89a7-4d24-8cf1-cf3730168979 yayınlandı. Pages ve localhost dosyaları test edilen sürümle birebir eşleşti; iki adresten ortak görünüm ve yedek içerikleri aynı, yetkisiz okumalar ve onaysız liste yazımı engelli, üç ihracat biçimi çalışır. Üretimde düzenlenebilir not/ajanda/harcama bulunmadığından kayıt düzenleme canlı veride denenmedi; test ortamı ve otomatik testlerde doğrulandı. Fiziksel Android mikrofon testi kullanıcı cihazında yapılmalıdır. Kullanım: ../ATLAS-Duzenleme-Listeler-Yedek-Kullanim.txt.
+593 otomatik test geçti. Ayrı RAM deneme ortamında gerçek tarayıcıyla harcama düzeltme/geri alma, proje oluşturma/adım tamamlama ve JSON indirme doğrulandı; 390×844 mobil görünüm incelendi. Üretime test verisi yazılmadı. 0011/0012 şema güncellemeleri uygulandı; sürüm 4455ecc2-89a7-4d24-8cf1-cf3730168979 yayınlandı. Pages ve localhost dosyaları test edilen sürümle birebir eşleşti; iki adresten ortak görünüm ve yedek içerikleri aynı, yetkisiz okumalar ve onaysız liste yazımı engelli, üç ihracat biçimi çalışır. Üretimde düzenlenebilir not/ajanda/harcama bulunmadığından kayıt düzenleme canlı veride denenmedi; test ortamı ve otomatik testlerde doğrulandı. Fiziksel Android mikrofon testi kullanıcı cihazında yapılmalıdır. Kullanım: ../ATLAS-Duzenleme-Listeler-Yedek-Kullanim.txt.
 
 ### 25 Ekim 2026 — Saatli ajanda, odak ve harcama defteri (yayında)
 
@@ -132,7 +132,7 @@ Komutlar depo kökünde, sırayla çalıştırılır:
 
 ```text
 pnpm install --frozen-lockfile   # bağımlılıkları kurar (lockfile değişmez)
-pnpm test                        # node --test ile 590 testi çalıştırır
+pnpm test                        # node --test ile 593 testi çalıştırır
 pnpm check                       # wrangler deploy --dry-run ile paketi doğrular
 pnpm preview                     # node scripts/preview.mjs ile yerel demoyu açar
 ```

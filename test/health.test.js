@@ -134,6 +134,51 @@ test('health is rate limited and never leaks driver messages',async()=>{
  assert.equal(direct.status,503);
 });
 
+test('schema version comes from the applied D1 ledger, so a lagging live schema is visible',async()=>{
+ const {sql,db}=database();
+ try{
+  sql.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
+  const insert=sql.prepare('INSERT INTO d1_migrations(name) VALUES(?)');
+  for(const migration of MIGRATIONS.slice(0,15))insert.run(migration.name);
+  const response=await get(createWorker(),env({MEMORY_DB:db}));
+  const body=await response.json();
+  assert.equal(body.schema.version,'0015','the version is what D1 applied, not the repo constant');
+  assert.equal(body.schema.appliedVersion,'0015');
+  assert.equal(body.schema.expectedVersion,SCHEMA_VERSION);
+  assert.equal(body.schema.source,'d1_migrations');
+  assert.equal(body.schema.upToDate,false);
+  assert.deepEqual(body.schema.missing,[],'every table exists even though the ledger stops early');
+  assert.equal(response.status,503,'a lagging ledger is not reported as healthy');
+ }finally{sql.close();}
+});
+
+test('a complete D1 ledger reports the latest migration as the schema version',async()=>{
+ const {sql,db}=database();
+ try{
+  sql.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
+  const insert=sql.prepare('INSERT INTO d1_migrations(name) VALUES(?)');
+  for(const migration of MIGRATIONS)insert.run(migration.name);
+  const body=await (await get(createWorker(),env({MEMORY_DB:db}))).json();
+  assert.equal(body.schema.version,SCHEMA_VERSION);
+  assert.equal(body.schema.source,'d1_migrations');
+  assert.equal(body.schema.upToDate,true);
+  assert.equal(body.ok,true);
+ }finally{sql.close();}
+});
+
+test('schema version falls back to the table run when the D1 ledger is absent',async()=>{
+ const {sql,db}=database();
+ try{
+  const body=await (await get(createWorker(),env({MEMORY_DB:db}))).json();
+  assert.equal(body.schema.source,'tables');
+  assert.equal(body.schema.version,SCHEMA_VERSION);
+  assert.equal(body.schema.upToDate,true);
+  const noDb=await (await get(createWorker(),env())).json();
+  assert.equal(noDb.schema.version,null,'no database means no claimed version');
+  assert.equal(noDb.schema.source,'none');
+ }finally{sql.close();}
+});
+
 test('health never calls the model provider',async()=>{
  let calls=0;
  const worker=createWorker(async()=>{calls+=1;return new Response('{}',{status:500});});
