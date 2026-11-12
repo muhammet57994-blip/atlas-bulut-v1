@@ -1,0 +1,16 @@
+{
+  "name": "atlas-bulut-v1",
+  "account_id": "2beb7471bcd286c29ef9a70378bf4a0c",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "d1_databases": [{ "binding": "MEMORY_DB", "database_name": "atlas-memory", "database_id": "cd8aa998-1b96-4560-9af7-f4751e2dde80", "migrations_dir": "migrations" }],
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none" },
+  "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite" },
+  "observability": { "enabled": true },
+  "ratelimits": [
+    { "name": "LOGIN_LIMIT", "namespace_id": "8642101", "simple": { "limit": 5, "period": 60 } },
+    { "name": "CHAT_LIMIT", "namespace_id": "8642102", "simple": { "limit": 6, "period": 60 } }
+  ]
+}

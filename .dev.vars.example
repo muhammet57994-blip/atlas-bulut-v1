@@ -1,0 +1,4 @@
+# Gerçek değerleri sohbete, Git'e veya ZIP'e koymayın.
+GEMINI_API_KEY=""
+ATLAS_ACCESS_PASSWORD=""
+SESSION_SECRET=""

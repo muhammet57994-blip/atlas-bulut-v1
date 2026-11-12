@@ -1,0 +1,9 @@
+CREATE TABLE atlas_routines (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ draft_id TEXT NOT NULL UNIQUE,
+ trigger TEXT NOT NULL CHECK(length(trigger) BETWEEN 2 AND 120),
+ trigger_key TEXT NOT NULL UNIQUE,
+ topic TEXT NOT NULL CHECK(length(topic) BETWEEN 2 AND 100),
+ steps TEXT NOT NULL,
+ created_at TEXT NOT NULL
+);

@@ -1,0 +1,15 @@
+# Notlar, arama ve ses görünümü
+
+Yayınlandı: 24 Ekim 2026, Worker sürümü 5e751853-a92a-4f70-b272-ed30f32e4b80. 0003_notes.sql canlı veritabanına uygulandı. Bilgisayar sunucusu güncellendi. Pages ve localhost:8790 üzerinden giriş, not listesi, onaysız taslağın kayıt oluşturmaması ve yeni ekran dosyaları doğrulandı. Canlı testler not yazmadı ve ses isteği göndermedi. 57 test geçti. Kullanıcının telefonunda yeni sürümle deneyimi henüz doğrulanmadı.
+
+Kullanıcı bu çalışma sırasında bundan sonraki ATLAS değişikliklerinin ücretsiz kalmak şartıyla ayrıca yayın onayı beklenmeden yayınlanmasını açıkça istedi. Bu izin not kaydetme onayını kaldırmaz. Notlar yalnızca “Not al: …” ardından ekrandaki “Bu notu kaydet” onayıyla saklanır. Normal sohbet kalıcı not oluşturmaz.
+
+Komutlar: “Not al: Yeni proje fikrim…”, “Notlarda ara: proje”, “Notlarımı göster”, “Not 1 oku”. Notlar MEMORY_DB içinde ayrı atlas_notes tablosunda tutulur. En fazla 100 not, not başına 1000 karakter. Arama Türkçe büyük/küçük harf duyarsız düz metin aramasıdır; yüzde ve alt çizgi joker değildir. Notlar ses dosyası olarak saklanmaz; sesli okunan metin Gemini’ye gönderilir. Kalıcı hafızaya otomatik eklenmez. Bu sürümde not silme yoktur.
+
+Google 429 yanıtında eski “kota doldu” mesajı günlük kotanın kesin bittiği izlenimini veriyordu. Yeni mesaj hız veya kota sınırını açıklar. Bu çalışmada hesabın hangi sınırına ulaştığı doğrulanmadı. Ücretli modele geçiş veya otomatik yeniden deneme yoktur. Son en fazla 8 sesli yanıt, en fazla 8 MiB çözülmüş ses olarak yalnızca sekme belleğinde tutulur; aynı metni yeniden okutmak sağlayıcı isteği oluşturmaz. Çıkış, oturumun kapanması ve sayfadan ayrılma bu belleği temizler. İki cihaz ayrı geçici ses belleğine sahiptir. Yeni yanıtlar yine ses kotasını kullanır.
+
+Daire içine görünür RGB dalga çubukları eklendi. Dinleme ve yanıt verme durumlarında farklı hareket vardır; gerçek ses genliği ölçümü değildir. Hareket azaltma tercihine saygı duyulur, kullanıcı “Animasyonu aç” düğmesiyle yalnızca ATLAS için açabilir. Bu görsel tercih cihazdaki localStorage'da saklanır. Mikrofon izni istemez ve yeni ses isteği oluşturmaz.
+
+57 otomatik test geçti; not onayı, iki oturumda ortak kayıt, parametreli SQL, düz metin arama, sınırlar, yetki/Origin, ses belleği ve çıkış temizliği dahil. Ayrı localhost:8792 önizlemesinde kayıt onayı ve Türkçe arama doğrulandı. Konuşma durumundaki görünür çubukların atlasSignal animasyonuyla değişen dönüşümleri tarayıcıdan doğrulandı. Gerçek telefon mikrofonu bu ortamdan test edilemedi; kullanıcı sorunun ses kotası mesajı olduğunu belirtti. Bu kontrollerde gerçek ses üretimi yapılmadı.
+
+Yayın: yalnızca değişen kaynak/public/test dosyalarını asıl atlas-bulut-v1 klasörüne aktar, migrations/0003_notes.sql dosyasını mevcut atlas-memory veritabanına uygula. Test ve dry-run sonrası Worker yayınla. Bilgisayarda doğrulanmış local.mjs sürecini yeniden başlat. Canlı listeme ve onaysız taslak kontrolü yap; gerçek not ekleme/silme veya ses kotası harcayan test yapma. Önizleme test düğmeleri work/preview-notes.mjs tarafından eklenir; üretim dosyalarında bulunmaz.

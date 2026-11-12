@@ -1,0 +1,31 @@
+# Instagram hesap bağlantısı
+
+## Doğrulanmış sonuç — 24 Ekim 2026
+
+celik38__ resmi OAuth ile bağlandı; yalnız `instagram_business_basic` ve `instagram_business_manage_insights` izinleri kabul edildi. Üretim Pages ve localhost ortak bağlantı durumu `connected:true`. Gerçek son 7 tamamlanmış UTC gününün (17–24 Ekim, bitiş hariç) raporu başarıyla alındı: erişim 51, görüntülenme 300, toplam etkileşim 2. Sayısal metriklerden Gemini önerisi üretildi. Bunlar test anındaki değerlerdir; yeni sorgularda değişebilir.
+
+Gerçek OAuth yanıtı düz nesne ve izin dizisi biçimindeydi; bu biçim ile belgedeki sarmalanmış yanıt aynı sıkı kontrollerle destekleniyor. Belirsiz birleşik yanıt reddedilir. OAuth `user_id`, uygulamaya özel kimlik olarak `/me` yanıtındaki `id` ile eşleşebilir; `/me.user_id` yine sabit Instagram hesap kimliğiyle, kullanıcı adı da celik38__ ile eşleşmelidir. Büyük sayısal kimlikler JSON reviver kaynak metni üzerinden kayıpsız okunur; güvenli olmayan yuvarlama reddedilir.
+
+80 otomatik test geçti. Son çalışan yayın: 752c0950-b7c7-401b-bf3e-0bb57a22a110. Uygulama sırrı Cloudflare'da gizlidir. Önceki eksik yapılandırma ve başarısız bağlantı notları aşağıda tarihçe olarak korunmuştur; güncel durum yukarıdadır.
+
+## Güncel yöntem: resmi Instagram giriş akışı
+
+Bu bölüm aşağıdaki eski anahtar yapıştırma yönteminin yerine geçer. `/me/permissions` gerçek Instagram bağlantısında HTTP 400 / Meta 100 verdi; bu çağrı kaldırıldı. İzinleri denetlemeden manuel token kaydetmeye izin verilmez, eski `/connect` yolu 410 döner. Resmi Business Login kod değişiminin `data[0].permissions` alanı tam olarak temel profil ve istatistik izinlerini içermelidir. Farklı/eksik izin ve farklı hesap reddedilir. Uzun ömürlü token sunucuda alınır; token, izin listesi ve sona erme zamanı birlikte AES-GCM ile saklanır. Rapor öncesi süre ve hesap kontrol edilir; Meta izin iptalinde veri isteklerini reddeder. İzinler her raporda ayrı bir permissions API'sinden sorgulanmaz.
+
+Gerekli Cloudflare Worker sırrı: `INSTAGRAM_APP_SECRET` (Meta Instagram alt uygulama sırrı). Asla README, istemci veya sohbet içinde saklanmaz. Instagram App ID: 1162087043047938. Meta'ya kaydedilen dönüş adresi: `https://atlas-pasam-v1.pages.dev/api/instagram/callback`. Login yalnız bu origin üzerinde başlar; localhost arayüzü kullanıcıyı bulut adresine yönlendirir. ATLAS girişinden sonra Instagram analizi → onay → Instagram ile güvenli bağlan kullanılır. Callback GET yolu yalnız 10 dakika geçerli, tarayıcıdaki Secure HttpOnly SameSite=Lax cookie ile eşleşen tek kullanımlık rastgele state kabul eder. State D1'de parola ve session secret ile bağlanmış özet olarak tutulur, callback'te atomik tüketilir. Kodlar ve tokenlar istemciye döndürülmez; sonuç sabit durum etiketiyle ana sayfaya yönlendirilir. Worker gözlemlenebilirliği kapalıdır. Yeni migration 0005 yalnız geçici OAuth state tablosu oluşturur.
+
+76 otomatik test geçti (CSRF/state, tekrar kullanım, süre, iptal, scope, yanlış hesap, gizlilik ve mevcut özellikler). Pages ve localhost üzerinde yeni UI ve auth koruması doğrulandı. Yayın 38d552b0-b8de-482d-ab92-52200cc1ae93. Gerçek OAuth tamamlanması için Cloudflare uygulama sırrı girişi bekleniyor; gerçek hesap raporu henüz doğrulanmadı. Meta resmi kaynak: https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/business-login ve https://developers.facebook.com/documentation/instagram-platform/insights
+
+## Önceki denemelerin kaydı (güncel kurulum talimatı değildir)
+
+Son düzeltme: Cloudflare çalışma ortamında `redirect: 'error'` isteği Meta'ya ulaşmadan başarısız kılıyordu. `manual` ile değiştirildi; yönlendirmeler izlenmez ve başarılı olmayan yanıtlar reddedilir. Gerçek yayında ve localhost köprüsünde sahte anahtarla Meta HTTP 401 / kod 190 yanıtı alındı. Sağlayıcı metni yerine yalnızca aşama ve sayısal hata kodları gösterilir. 74 test geçti. Yeni yayın: 919a28f3-04c6-4fc5-b267-7a14cfd62607. Kullanıcının bağlantısı son kontrolde henüz kayıtlı değil; gerçek istatistik okuması doğrulanmış değildir.
+
+24 Ekim 2026: hesap bağlantı formu ve salt okuma rapor uç noktaları yayında. Hesap celik38__ / 17841407597588263 ile sınırlı. 73 otomatik test geçti; son güvenlik düzenlemesinden sonra 7 bağlantı testi yeniden geçti. Üretim Pages ve localhost üzerinde oturum, bağlantı durumu ve yeni arayüz doğrulandı. Gerçek Meta anahtarı henüz girilmedi; gerçek API izin yanıtı ve istatistik okuması kullanıcı bağlantıyı tamamladıktan sonra doğrulanacak. Mock testler gerçek Meta erişiminin kanıtı değildir.
+
+Instagram analizi → Hesabı bağla / anahtarı yenile alanında Meta anahtarını girin, açıklamayı onaylayıp İzinleri doğrula ve bağla düğmesine basın. Anahtarı sohbete yazmayın. Sonrasında Son 7 günü incele veya “Instagram istatistiklerime bak” komutunu kullanın. Hata varsa anahtar yerine yalnızca hata metnini paylaşın.
+
+Yalnız instagram_business_basic ve instagram_business_manage_insights izinleri kabul edilir. Başka verilmiş izin, eksik izin, farklı hesap, doğrulanamayan veya sayfalanmış izin cevabı kaydı durdurur. Her raporda izinler yeniden doğrulanır. Meta'ya yalnız sabit graph.instagram.com/v24.0 adreslerinde GET yapılır; takip, DM, yorum veya yayın uç noktası yoktur. Tarayıcı tokenı sunucuya gönderir; sunucu Meta doğrulaması sonrası D1'de AES-GCM ile şifreli saklar. Anahtar SESSION_SECRET'ten alan ayrımıyla türetilir; bu sır değişirse bağlantı yeniden kurulmalıdır. D1 kopyası tek başına tokenı açamaz; Worker ve SESSION_SECRET üzerinde tam erişimi olan yöneticiler açabilir. Token ve sağlayıcı hata içerikleri istemciye döndürülmez. Gözlemlenebilirlik kapalıdır.
+
+Rapor son yedi tamamlanmış UTC gününün erişim, görüntülenme ve toplam etkileşim değerlerini ayrı alır. Veri alınamaması sıfır sayılmaz. Erişim günlük değerler toplanarak hesaplanmaz. Yalnız sayısal metrikler ve dönem mevcut Gemini modeline öneri üretimi için gönderilir; token gönderilmez. Ücretsiz kota hatasında ücretli model veya otomatik tekrar yoktur. Yeni ücretli hizmet açılmadı. Token süresi dolduğunda kullanıcı aynı formdan yeniler; otomatik yenileme yoktur. Tarayıcı kapanınca formdaki token temizlenir; sunucu bağlantısı ortak kalır.
+
+Yeni migration: 0004_instagram.sql; mevcut hafıza, görev ve not kayıtlarını değiştirmez. Yayın Worker sürümü: 65c53719-220b-4187-ac26-0abd73c9bec7.

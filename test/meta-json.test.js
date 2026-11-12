@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {parseMetaJSON} from '../src/meta-json.js';
+test('Meta numeric IDs retain exact digits without changing text or metrics',()=>{const parsed=parseMetaJSON('{"user_id":17841407597588263,"id":17841407597588265,"reach":123,"username":"celik38__"}');assert.equal(parsed.user_id,'17841407597588263');assert.equal(parsed.id,'17841407597588265');assert.equal(parsed.reach,123);assert.equal(parseMetaJSON('{"user_id":"17841407597588263"}').user_id,parsed.user_id);});

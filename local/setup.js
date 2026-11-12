@@ -1,0 +1,3 @@
+history.replaceState(null,'','/setup');
+const $=id=>document.getElementById(id);
+$('setup').addEventListener('submit',async e=>{e.preventDefault();if($('password').value!==$('repeat').value){$('status').textContent='Şifreler aynı değil.';return;}$('save').disabled=true;try{const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('key').value.trim(),password:$('password').value,freeTier:$('free').checked})});const data=await r.json();if(!r.ok)throw new Error(data.error||'Kurulum tamamlanamadı.');$('key').value='';$('password').value='';$('repeat').value='';location.assign('/');}catch(error){$('status').textContent=error.message;}finally{$('save').disabled=false;}});

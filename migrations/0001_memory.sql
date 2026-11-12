@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS atlas_memories (
+ id TEXT PRIMARY KEY,
+ text TEXT NOT NULL UNIQUE CHECK(length(text) BETWEEN 1 AND 400),
+ created_at TEXT NOT NULL
+);
