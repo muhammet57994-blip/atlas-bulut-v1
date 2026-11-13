@@ -88,6 +88,26 @@ test('internal snapshot reads inherit the request id from the entry point',async
  assert.equal(entry.table,'atlas_record_changes');
 });
 
+test('worker.request and worker.crash entries always carry stage and request id',async t=>{
+ const logged=[];t.mock.method(console,'error',(...args)=>logged.push(args.join(' ')));
+ const e=env();
+ const requestFailure=await createWorker().fetch(new Request(origin+'/',{method:'GET'}),{...e,ASSETS:{fetch:async()=>{throw new Error('asset failure');}}});
+ assert.equal(requestFailure.status,503);
+ // The inner catch builds its route from new URL(request.url); an unparsable url
+ // throws there too and lands in the outer worker.crash handler.
+ const crashFailure=await createWorker().fetch({url:'bozuk adres',method:'GET',headers:new Headers()},e);
+ assert.equal(crashFailure.status,503);
+ const entries=logged.map(line=>JSON.parse(line));
+ assert.deepEqual(entries.map(entry=>entry.stage),['worker.request','worker.crash'],'both failure paths are recorded once, in order');
+ assert.deepEqual(entries.map(entry=>entry.requestId),[requestFailure.headers.get('X-ATLAS-Request-Id'),crashFailure.headers.get('X-ATLAS-Request-Id')],'each entry is tied to its own response');
+ for(const entry of entries){
+  assert.equal(entry.event,'atlas_error');
+  assert.equal(typeof entry.stage,'string',`${entry.stage} stage must stay a string`);
+  assert.ok(entry.stage.length>0,'stage is never empty');
+  assert.match(entry.requestId,/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,'every entry carries the request uuid');
+ }
+});
+
 test('the log helper keeps only allowlisted fields and redacts key-like values',()=>{
  const described=describeError(Object.assign(new Error('failed for AIzaSyFAKEKEY1234567890'),{status:502}));
  assert.equal(described.name,'Error');
