@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorker} from '../src/worker.js';
-import {describeError,reportError} from '../src/log.js';
+import {describeError,reportError,resetErrorStorm} from '../src/log.js';
 import {offlineSnapshot} from '../src/offline.js';
 import {managementRequest} from '../src/record-management.js';
 const origin='https://atlas.example';
@@ -106,6 +106,15 @@ test('worker.request and worker.crash entries always carry stage and request id'
   assert.ok(entry.stage.length>0,'stage is never empty');
   assert.match(entry.requestId,/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,'every entry carries the request uuid');
  }
+});
+
+test('an error storm is capped per stage per minute',()=>{
+ const logged=[];const original=console.error;
+ console.error=(...args)=>logged.push(args.join(' '));
+ try{resetErrorStorm();for(let i=0;i<40;i++)reportError({stage:'storm.test',requestId:'0b7d4e2a-6f1c-4d3b-9a55-2c8f0e1d7a44',error:new Error('boom')});}
+ finally{console.error=original;resetErrorStorm();}
+ assert.equal(logged.length,30,'the free log budget keeps the first 30 lines per minute');
+ assert.equal(JSON.parse(logged[0]).stage,'storm.test');
 });
 
 test('the log helper keeps only allowlisted fields and redacts key-like values',()=>{

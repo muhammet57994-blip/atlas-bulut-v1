@@ -3,6 +3,7 @@
 // Never returns record counts, record content, secrets or raw database error text.
 import {reportError} from './log.js';
 import {approvedModel} from './models.js';
+import {telemetrySnapshot} from './telemetry.js';
 
 // Migration ledger kept in code because the Worker cannot read migrations/ at
 // runtime. test/health.test.js re-reads the SQL files and fails if a name or a
@@ -84,7 +85,9 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
     ready: configurationReady(env),
     model: {
       configured: typeof env?.GEMINI_API_KEY === 'string' && env.GEMINI_API_KEY.length > 0,
-      approved: env?.GEMINI_MODEL === undefined || approvedModel(env.GEMINI_MODEL)
+      approved: env?.GEMINI_MODEL === undefined || approvedModel(env.GEMINI_MODEL),
+      // Per-isolate counters: quota replies and failures since the last cold start.
+      stats: telemetrySnapshot()
     },
     schema: {
       version: null,

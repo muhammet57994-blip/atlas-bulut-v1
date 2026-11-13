@@ -79,6 +79,24 @@ test('resilientDb fails fast once its breaker is open',async()=>{
  assert.equal(await wrapped.prepare('SELECT 1').first().catch(()=> 'still failing'),'still failing');
 });
 
+test('resilientDb never retries a write, because it may already have committed',async()=>{
+ let calls=0;
+ const db={prepare:()=>({run:async()=>{calls++;throw new Error('D1_ERROR: network connection lost');}})};
+ const wrapped=resilientDb(db,{name:'test-db-write',baseDelay:1});
+ await assert.rejects(()=>wrapped.prepare('INSERT INTO atlas_notes(text) VALUES(1)').run(),/network connection lost/u);
+ assert.equal(calls,1,'a write is attempted once');
+});
+
+test('resilientDb retries a batch only when every statement is a read',async()=>{
+ for(const [sql,expected] of [['SELECT 1',2],['INSERT INTO t VALUES(1)',1]]){
+  let calls=0;
+  const db={prepare:()=>({all:async()=>{calls++;throw new Error('D1_ERROR: network connection lost');}}),batch:async list=>{calls++;throw new Error('D1_ERROR: network connection lost');}};
+  const wrapped=resilientDb(db,{name:'test-db-batch-'+expected,baseDelay:1});
+  await assert.rejects(()=>wrapped.batch([wrapped.prepare(sql)]),/network connection lost/u);
+  assert.equal(calls,expected,sql+' batch attempts');
+ }
+});
+
 test('resilientDb unwraps statements for batch and retries the whole group',async()=>{
  let calls=0,seen;
  const db={prepare:sql=>({bind:(...args)=>({sql,args}),sql}),batch:async list=>{calls++;if(calls===1)throw new Error('D1_ERROR: network connection lost');seen=list;return list.map(()=>({results:[{n:1}]}));}};

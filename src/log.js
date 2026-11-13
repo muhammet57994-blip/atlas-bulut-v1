@@ -1,3 +1,5 @@
+import {rememberDiagnostic} from './diagnostics.js';
+
 // Single structured error sink for ATLAS.
 // Only stage, request id, error shape and an allowlisted operational message are
 // emitted. Free-form messages are dropped by default, so a credential, cookie,
@@ -21,6 +23,19 @@ const REDACTIONS = [
   /[A-Za-z0-9_-]{32,}/gu
 ];
 const META_LIMITS = {route:80, table:60, kind:40, action:40, stage:60, provider:40};
+// A failing provider or database can answer every request with an error. Free
+// Workers Logs allows 200K events/day, so a storm must not spend the whole budget
+// on identical lines and hide the first, most useful ones.
+const STORM_LIMIT = 30, STORM_WINDOW_MS = 60000;
+let stormWindow = 0;
+const stormCounts = new Map();
+export function resetErrorStorm() { stormWindow = 0; stormCounts.clear(); }
+function allowStage(stage, now = Date.now()) {
+  if (now - stormWindow >= STORM_WINDOW_MS) { stormWindow = now; stormCounts.clear(); }
+  const count = (stormCounts.get(stage) || 0) + 1;
+  stormCounts.set(stage, count);
+  return count <= STORM_LIMIT;
+}
 function scrub(value, max) {
   if (typeof value !== 'string') return '';
   let text = value;
@@ -61,12 +76,23 @@ export function describeError(error) {
 }
 export function reportError({stage = 'unknown', requestId = '', error, meta} = {}) {
   try {
-    console.error(JSON.stringify({
+    const entry = {
       event: 'atlas_error',
       stage: scrub(stage, META_LIMITS.stage) || 'unknown',
       requestId: safeRequestId(requestId),
       ...describeError(error),
       ...details(meta)
-    }));
+    };
+    if (!allowStage(entry.stage)) return;
+    console.error(JSON.stringify(entry));
+    rememberDiagnostic({
+      at: new Date().toISOString(),
+      stage: entry.stage,
+      requestId: entry.requestId,
+      ...(entry.status === undefined ? {} : {status: entry.status}),
+      ...(entry.code ? {code: entry.code} : {}),
+      message: entry.message,
+      ...(entry.route ? {route: entry.route} : {})
+    });
   } catch {}
 }

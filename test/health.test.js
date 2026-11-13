@@ -74,7 +74,8 @@ test('health needs no session and reports schema, database and model state',asyn
  assert.deepEqual(body.schema.migrations.missing,[]);
  assert.deepEqual(body.schema.migrations.ahead,[]);
  assert.deepEqual(body.schema.migrations.applied,MIGRATIONS.map(migration=>migration.name));
-  assert.deepEqual(body.model,{configured:true,approved:true});
+  assert.deepEqual({configured:body.model.configured,approved:body.model.approved},{configured:true,approved:true});
+  assert.equal(typeof body.model.stats.quota,'number','quota counters are reported');
   const text=JSON.stringify(body);
   assert.ok(!text.includes('FAKE_TEST_KEY'));
   assert.ok(!text.includes(password));

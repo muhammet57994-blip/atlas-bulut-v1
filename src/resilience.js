@@ -62,18 +62,22 @@ export class CircuitBreaker {
 // retry on transient failures and a shared circuit breaker. Non-transient errors
 // (schema, constraints) propagate immediately and never trip the breaker.
 const RAW = Symbol('atlas.raw-statement');
+const READ_ONLY = Symbol('atlas.read-only');
+// Writes are never retried: an ambiguous network failure may have committed the
+// statement, so a second attempt would duplicate a record or a receipt.
+const isReadOnly = sql => /^\s*(?:SELECT|PRAGMA|EXPLAIN)\b/iu.test(sql);
 
 export function resilientDb(db, { name = 'd1', attempts = 2, baseDelay = 50 } = {}) {
   if (!db || typeof db.prepare !== 'function') return db;
   const cb = breaker(name, { threshold: 8, resetMs: 30000 });
-  const guarded = run => {
+  const guarded = (run, retryable = true) => {
     if (cb.isOpen) {
       const error = new Error(`circuit open: ${name}`);
       error.code = 'CIRCUIT_OPEN';
       // Reject like D1 does; a synchronous throw would escape promise chains.
       return Promise.reject(error);
     }
-    return retry(run, { attempts, baseDelay, shouldRetryError: isTransientD1Error })
+    return retry(run, { attempts: retryable ? attempts : 1, baseDelay, shouldRetryError: isTransientD1Error })
       .then(result => { cb.recordSuccess(); return result; })
       .catch(error => { if (isTransientD1Error(error)) cb.recordFailure(); throw error; });
   };
@@ -82,19 +86,24 @@ export function resilientDb(db, { name = 'd1', attempts = 2, baseDelay = 50 } = 
       const prepared = db.prepare(sql);
       return bound.length ? prepared.bind(...bound) : prepared;
     };
-    const exec = (method, args) => guarded(() => build()[method](...args));
+    const readOnly = isReadOnly(sql);
+    const exec = (method, args) => guarded(() => build()[method](...args), readOnly);
     return {
       bind: (...args) => statement(sql, args),
       first: (...args) => exec('first', args),
       all: (...args) => exec('all', args),
       run: (...args) => exec('run', args),
-      [RAW]: build
+      [RAW]: build,
+      [READ_ONLY]: readOnly
     };
   };
   const wrapped = {prepare: sql => statement(sql)};
   // D1 batch() takes prepared statements; rebuild the real ones and retry the group.
   if (typeof db.batch === 'function') {
-    wrapped.batch = statements => guarded(() => db.batch(statements.map(item => item?.[RAW] ? item[RAW]() : item)));
+    wrapped.batch = statements => {
+      const readOnly = statements.length > 0 && statements.every(item => item?.[READ_ONLY] === true);
+      return guarded(() => db.batch(statements.map(item => item?.[RAW] ? item[RAW]() : item)), readOnly);
+    };
   }
   return wrapped;
 }

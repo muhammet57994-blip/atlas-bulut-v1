@@ -1,4 +1,5 @@
 import {retry, isTransientNetworkError, breaker} from './resilience.js';
+import {noteModelCall, noteModelQuota, noteModelFailure} from './telemetry.js';
 
 // Every id here is on Google's free tier, so a spent quota can move to the next
 // one without billing. Cheapest first; an approved configured model stays first.
@@ -38,8 +39,10 @@ export async function modelRequest(env, payload, {upstream = fetch, signal} = {}
   const cb = breaker('gemini', {threshold: 5, resetMs: 30000});
   if (cb.isOpen) return {model: '', response: null, quotaExhausted: false, circuitOpen: true};
   try {
-    let last;
+    let last, lastModel = '';
     for (const model of chain) {
+      lastModel = model;
+      noteModelCall(model);
       const response = await retry(
         () => upstream(modelUrl(model), {
           method: 'POST',
@@ -50,7 +53,12 @@ export async function modelRequest(env, payload, {upstream = fetch, signal} = {}
         }),
         {attempts: 2, baseDelay: 100}
       );
-      if (response.status !== 429) { cb.recordSuccess(); return {model, response, quotaExhausted: false, circuitOpen: false}; }
+      if (response.status !== 429) {
+        if (!response.ok) noteModelFailure(model);
+        cb.recordSuccess();
+        return {model, response, quotaExhausted: false, circuitOpen: false};
+      }
+      noteModelQuota(model);
       last = {model, response, quotaExhausted: true, circuitOpen: false};
     }
     cb.recordSuccess();
@@ -58,7 +66,7 @@ export async function modelRequest(env, payload, {upstream = fetch, signal} = {}
   } catch (error) {
     // A timeout or a refused request is not an outage; only transient network
     // failures count towards opening the breaker.
-    if (isTransientNetworkError(error)) cb.recordFailure();
+    if (isTransientNetworkError(error)) { cb.recordFailure(); noteModelFailure(lastModel); }
     throw error;
   }
 }

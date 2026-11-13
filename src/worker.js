@@ -33,6 +33,7 @@ import {codeRequest,normalizeResearchResults,researchRequest,webSearchTool} from
 import {reportError} from './log.js';
 import {resilientDb} from './resilience.js';
 import {sweepExpired} from './cleanup.js';
+import {diagnosticsSnapshot} from './diagnostics.js';
 import {healthSnapshot} from './health.js';
 const enc = new TextEncoder();
 const COOKIE = '__Host-atlas';
@@ -159,6 +160,11 @@ export function createWorker(upstream=fetch) {
       }
       if(!configured(env)) return fail('Güvenli giriş kurulumu henüz tamamlanmadı.',503);
       if(path==='/api/instagram/callback'&&request.method==='GET')return finishInstagramOAuth(request,env,upstream,requestId);
+      if(path==='/api/diagnostics' && request.method==='GET') {
+        if(!sameOriginRequest(request,url.origin))return fail('Bu kaynaktan işlem yapılamaz.',403);
+        if(!await authenticated(request,env))return fail('Oturumunuz kapalı. Yeniden giriş yapın.',401);
+        return json(diagnosticsSnapshot());
+      }
       if(path==='/api/session' && request.method==='GET') {
         const valid=await authenticated(request,env);
         const sameSite=request.headers.get('Sec-Fetch-Site')!=='cross-site'&&(!request.headers.get('Origin')||request.headers.get('Origin')===url.origin);
@@ -380,10 +386,18 @@ export function createWorker(upstream=fetch) {
     const requestId=crypto.randomUUID();
     // One transient-failure layer for every D1 read and write reached through env.
     if(env?.MEMORY_DB)env={...env,MEMORY_DB:resilientDb(env.MEMORY_DB)};
+    const started=Date.now();
     let response;
     try{response=await worker.fetch(request,env,requestId);}
     catch(error){reportError({stage:'worker.crash',requestId,error});response=fail('İşlem tamamlanamadı. Lütfen yeniden deneyin.',503);}
     if(!response.headers.has('X-ATLAS-Request-Id'))response.headers.set('X-ATLAS-Request-Id',requestId);
+    const duration=Date.now()-started;
+    if(!response.headers.has('X-ATLAS-Duration-Ms'))response.headers.set('X-ATLAS-Duration-Ms',String(duration));
+    // Only slow or failed requests are logged, so a healthy day stays far below
+    // the free Workers Logs budget.
+    if(duration>=500||response.status>=500){
+      try{console.log(JSON.stringify({event:'atlas_request',requestId,status:response.status,durationMs:duration,route:new URL(request.url).pathname}));}catch{}
+    }
     return response;
   }};
 }
