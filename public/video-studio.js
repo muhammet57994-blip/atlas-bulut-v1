@@ -26,19 +26,21 @@
   }
   return samples;
  }
+ function hasPlayableFrames(width,height){return Number.isFinite(width)&&Number.isFinite(height)&&width>0&&height>0;}
  function recorderTypeCandidates(withAudio,userAgent=''){
   const safari=/iPad|iPhone|iPod/u.test(userAgent)||/Safari/u.test(userAgent)&&!/(Chrome|Chromium|Edg|OPR|Android)/u.test(userAgent);
   const webm=withAudio?['video/webm;codecs=vp8,opus','video/webm;codecs=vp9,opus']:['video/webm;codecs=vp8','video/webm;codecs=vp9'];
   const mp4=withAudio?['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4']:['video/mp4;codecs=avc1.42E01E','video/mp4'];
   return safari?[...mp4,...webm]:[...webm,...mp4];
  }
- window.AtlasVideoStudio={validateFiles,chooseMimeType,extensionFor,narrationText,makeAsmrSamples,recorderTypeCandidates};
+ window.AtlasVideoStudio={validateFiles,chooseMimeType,extensionFor,narrationText,makeAsmrSamples,recorderTypeCandidates,hasPlayableFrames,sceneSeconds};
  const format=$('videoFormat'),canvas=$('videoPreviewCanvas'),ctx=canvas.getContext('2d');
  function clearOutput(){if(outputUrl)URL.revokeObjectURL(outputUrl);outputUrl='';outputFile=null;const video=$('videoOutput');video.pause();video.removeAttribute('src');video.load();video.hidden=true;$('videoDownload').hidden=true;$('videoShare').hidden=true;}
  function showOutput(){const video=$('videoOutput'),anchor=$('videoDownload');if(outputUrl){video.src=outputUrl;video.hidden=false;anchor.href=outputUrl;anchor.hidden=false;}}
  function markEdited(){needsRender=true;if(outputUrl){showOutput();$('videoDownload').textContent='Önceki videoyu indir (düzenleme öncesi)';$('videoStatus').textContent='Düzenleme önizlemede görünüyor. Önceki video korunuyor; yenisi için “Videoyu yeniden oluştur” düğmesine bas.';}updateButtons();}
  function clearScenes(){runId++;working=false;activeRequest?.abort();activeRequest=null;if(raf)cancelAnimationFrame(raf);if(previewRaf)cancelAnimationFrame(previewRaf);if(previewTimer)clearTimeout(previewTimer);raf=0;previewRaf=0;previewTimer=0;if(recorder&&recorder.state!=='inactive')try{recorder.stop();}catch{}if(stream)stream.getTracks().forEach(track=>track.stop());stream=null;recorder=null;clearOutput();needsRender=false;scenes.splice(0);$('videoSceneList').replaceChildren();$('videoFiles').value='';$('videoTopic').value='';$('videoStatus').textContent='';drawEmpty();updateButtons();}
  function dimensions(){switch(format.value){case'square':return[720,720];case'wide':return[1280,720];default:return[720,1280];}}
+ function sceneSeconds(){const value=Number($('videoDuration').value);return Number.isFinite(value)&&value>0?Math.min(30,value):4;}
  function setCanvasSize(){const[w,h]=dimensions();if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}drawPreview();}
  function drawPhoto(photo){
   const [w,h]=dimensions();ctx.fillStyle='#111b24';ctx.fillRect(0,0,w,h);
@@ -142,7 +144,7 @@
  $('videoAsmrStyle').addEventListener('change',markEdited);
  $('videoPreviewIndex').addEventListener('input',()=>{if(previewRaf)cancelAnimationFrame(previewRaf);previewRaf=0;drawPreview();});
  $('videoTextAnimation').addEventListener('change',()=>{if(previewRaf)cancelAnimationFrame(previewRaf);previewRaf=0;drawPreview();markEdited();});
- $('videoPreviewPlay').addEventListener('click',()=>{if(!scenes.length||working)return;if(previewRaf)cancelAnimationFrame(previewRaf);const index=Math.min(Number($('videoPreviewIndex').value)||0,scenes.length-1),duration=Number($('videoDuration').value)*1000,start=performance.now();const frame=now=>{const progress=Math.min(1,(now-start)/duration);drawScene(index,progress);if(progress<1)previewRaf=requestAnimationFrame(frame);else previewRaf=0;};previewRaf=requestAnimationFrame(frame);});
+ $('videoPreviewPlay').addEventListener('click',()=>{if(!scenes.length||working)return;if(previewRaf)cancelAnimationFrame(previewRaf);const index=Math.min(Number($('videoPreviewIndex').value)||0,scenes.length-1),duration=sceneSeconds()*1000,start=performance.now();const frame=now=>{const progress=Math.min(1,(now-start)/duration);drawScene(index,progress);if(progress<1)previewRaf=requestAnimationFrame(frame);else previewRaf=0;};previewRaf=requestAnimationFrame(frame);});
  function recorderMimeType(withAudio){
   if(typeof MediaRecorder==='undefined')return'';
   const types=recorderTypeCandidates(withAudio,navigator.userAgent||'');
@@ -150,11 +152,16 @@
  }
  async function verifyPlayable(blob){
   const probe=document.createElement('video'),mime=blob.type||'video/webm';
+  probe.muted=true;probe.preload='metadata';
   if(probe.canPlayType&&!probe.canPlayType(mime))throw Error(`Chrome bu video biçimini oynatamıyor (${mime}). Yeniden oluşturup farklı kayıt biçimini deneyin.`);
   const url=URL.createObjectURL(blob);let timer=0;
   try{
    await Promise.race([new Promise((resolve,reject)=>{probe.onloadedmetadata=resolve;probe.onerror=()=>reject(Error(`Chrome kaydedilen videoyu çözemedi (${mime}). Yeniden oluşturmayı deneyin.`));probe.src=url;probe.load();}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Video doğrulaması zamanında tamamlanmadı. Yeniden deneyin.')),8000);})]);
-   if(!Number.isFinite(probe.duration)||probe.duration<=0||!probe.videoWidth||!probe.videoHeight)throw Error('Kaydedilen videoda oynatılabilir görüntü bulunamadı. Yeniden deneyin.');
+   // MediaRecorder writes WebM without a duration header, so Chrome reports
+   // Infinity until the file is seeked. Decoded frame size is the real proof
+   // that the recording is playable; duration is only filled in when available.
+   if(!hasPlayableFrames(probe.videoWidth,probe.videoHeight))throw Error('Kaydedilen videoda oynatılabilir görüntü bulunamadı. Yeniden deneyin.');
+   if(!Number.isFinite(probe.duration))await new Promise(resolve=>{const done=()=>{clearTimeout(timer);resolve();};timer=setTimeout(done,1200);probe.addEventListener('durationchange',done,{once:true});probe.addEventListener('timeupdate',done,{once:true});probe.currentTime=1e101;});
   }finally{clearTimeout(timer);probe.pause();probe.removeAttribute('src');probe.load();URL.revokeObjectURL(url);}
  }
  async function makeNarration(scene,signal){
@@ -175,7 +182,7 @@
   if(withAudio){if(audioContext.state==='suspended')await audioContext.resume();audioDestination=audioContext.createMediaStreamDestination();for(const track of audioDestination.stream.getAudioTracks())canvasStream.addTrack(track);}
    stream=canvasStream;const chunks=[];recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:2200000});updateButtons();
   const stopped=new Promise((resolve,reject)=>{recorder.ondataavailable=event=>{if(event.data?.size)chunks.push(event.data);};recorder.onerror=()=>reject(Error('Video kaydı sırasında sorun oluştu. Yeniden deneyin.'));recorder.onstop=resolve;});
-  recorder.start(250);const silentDuration=Number($('videoDuration').value)*1000;
+  recorder.start(250);const silentDuration=sceneSeconds()*1000;
   try{
    for(let i=0;i<scenes.length;i++){
     if(run!==runId)throw Error('İşlem iptal edildi.');drawScene(i,0);let duration=silentDuration;const voice=audioBuffers[i],asmr=asmrBuffers[i];
@@ -199,7 +206,7 @@
   try{
    let audioBuffers=[],asmrBuffers=[];
    if(narrate){const controller=new AbortController();activeRequest=controller;const timer=setTimeout(()=>controller.abort(),45000);try{for(const scene of scenes){if(run!==runId)throw Error('İşlem iptal edildi.');audioBuffers.push(await makeNarration(scene,controller.signal));}}finally{clearTimeout(timer);if(activeRequest===controller)activeRequest=null;}}
-   const silentDuration=Number($('videoDuration').value);if(addAsmr)asmrBuffers=scenes.map((scene,index)=>makeAsmrBuffer($('videoAsmrStyle').value,(narrate?audioBuffers[index].duration+0.45:silentDuration)));
+   const silentDuration=sceneSeconds();if(addAsmr)asmrBuffers=scenes.map((scene,index)=>makeAsmrBuffer($('videoAsmrStyle').value,(narrate?audioBuffers[index].duration+0.45:silentDuration)));
    await recordVideo(audioBuffers,asmrBuffers,run);
   }catch(error){if(run===runId)$('videoStatus').textContent=error.name==='AbortError'?'Seslendirme zamanında yanıt vermedi. Ücretsiz kota veya bağlantıyı kontrol edin; ücretli modele geçilmedi.':error.message;}
   finally{if(run===runId){working=false;recorder=null;if(stream){stream.getTracks().forEach(track=>track.stop());stream=null;}updateButtons();}}
@@ -211,5 +218,5 @@
  $('videoStudioDialog').addEventListener('cancel',event=>{if(recorder&&recorder.state!=='inactive'){event.preventDefault();clearScenes();$('videoStudioDialog').close();}else clearScenes();});
  $('videoStudioDialog').addEventListener('close',clearScenes);
   $('voiceVideoStudio').addEventListener('click',()=>{if(busy)return;endConversation();$('toolsDialog').close();if(!loggedIn){showLogin();return;}clearScenes();$('videoStudioDialog').showModal();});
- $('videoSpeechConsentRow').hidden=!$('videoNarrate').checked;window.addEventListener('pagehide',clearScenes);drawEmpty();updateButtons();
+ $('videoSpeechConsentRow').hidden=!$('videoNarrate').checked;window.addEventListener('pagehide',clearScenes);setCanvasSize();updateButtons();
 })();

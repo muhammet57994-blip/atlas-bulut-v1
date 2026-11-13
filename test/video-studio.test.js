@@ -81,6 +81,30 @@ test('narration uses the exact scene text and does not invent wording',()=>{
 
 });
 
+test('the preview canvas is sized to the chosen format before the first recording',()=>{
+ const studio=loadStudio();
+ assert.equal(typeof studio.sceneSeconds,'function');
+ assert.match(source,/window\.addEventListener\('pagehide',clearScenes\);setCanvasSize\(\);updateButtons\(\)/u);
+ assert.doesNotMatch(source,/window\.addEventListener\('pagehide',clearScenes\);drawEmpty\(\)/u,'a 300x150 default canvas crops the whole composition');
+});
+
+test('scene duration falls back to four seconds instead of recording a zero-length video',()=>{
+ const studio=loadStudio();
+ assert.equal(studio.sceneSeconds(),4);
+ assert.match(source,/const silentDuration=sceneSeconds\(\)\*1000/u);
+ assert.doesNotMatch(source,/Number\(\$\('videoDuration'\)\.value\)\*1000/u);
+});
+
+test('a WebM recording without a duration header is accepted when frames decode',()=>{
+ const studio=loadStudio();
+ assert.equal(studio.hasPlayableFrames(720,1280),true);
+ assert.equal(studio.hasPlayableFrames(0,1280),false);
+ assert.equal(studio.hasPlayableFrames(NaN,1280),false);
+ assert.doesNotMatch(source,/Number\.isFinite\(probe\.duration\)\|\|probe\.duration<=0/u,'a MediaRecorder Infinity duration must not reject the file');
+ assert.match(source,/if\(!hasPlayableFrames\(probe\.videoWidth,probe\.videoHeight\)\)/u);
+ assert.match(source,/probe\.currentTime=1e101/u,'the probe seeks once to let Chrome derive a duration');
+});
+
 test('recorder prefers widely playable VP8 WebM on Chrome and MP4 on Safari',()=>{
  const studio=loadStudio(),chrome=studio.recorderTypeCandidates(true,'Mozilla/5.0 Chrome/140.0 Safari/537.36'),safari=studio.recorderTypeCandidates(true,'Mozilla/5.0 (iPhone) Version/18.0 Mobile Safari/604.1');
  assert.match(chrome[0],/^video\/webm;codecs=vp8,opus/u);assert.match(safari[0],/^video\/mp4/u);
