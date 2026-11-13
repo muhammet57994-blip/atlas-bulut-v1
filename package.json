@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "preview": "node scripts/preview.mjs",
     "check": "wrangler deploy --dry-run",
-    "deploy": "wrangler deploy"
+    "smoke": "node scripts/smoke.mjs",
+    "deploy": "wrangler deploy && node scripts/smoke.mjs"
   },
   "devDependencies": {
     "wrangler": "4.149.0"

@@ -1,0 +1,36 @@
+name: Canlı duman testi
+
+# A deploy can report success while the running app is dead or misconfigured.
+# This job checks the published site through anonymous endpoints only, so it
+# needs no secrets and no Cloudflare session.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Canlı uç noktalar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Depoyu al
+        uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26.12.1
+
+      - name: Duman testi
+        run: node scripts/smoke.mjs
+        env:
+          SMOKE_BASE_URL: https://atlas-pasam-v1.pages.dev

@@ -137,7 +137,10 @@ pnpm install --frozen-lockfile   # bağımlılıkları kurar (lockfile değişme
 pnpm test                        # node --test ile 635 testi çalıştırır
 pnpm check                       # wrangler deploy --dry-run ile paketi doğrular
 pnpm preview                     # node scripts/preview.mjs ile yerel demoyu açar
+pnpm smoke                       # canlı anonim uç noktaları doğrular (sır gerekmez)
 ```
+
+`pnpm deploy` önce `wrangler deploy`, ardından `node scripts/smoke.mjs` çalıştırır: dağıtım "başarılı" görünse de uygulama ölüyse komut sıfırdan farklı kodla biter. Aynı duman testi `.github/workflows/smoke.yml` ile `main`'e her push'ta, günde bir kez ve elle tetiklendiğinde de çalışır; `SMOKE_BASE_URL` ile başka bir ortam denenebilir.
 
 `pnpm test` betiği `node --test` çalıştırır; komutu doğrudan vermek isterseniz depo kökünde `node --test` aynı sonucu verir. Tek bir dosyayı denemek için `node --test test/instagram-oauth.test.js` kullanılır.
 
