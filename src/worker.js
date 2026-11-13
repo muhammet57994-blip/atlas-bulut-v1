@@ -45,7 +45,7 @@ const headers = {
   'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
   'Strict-Transport-Security': 'max-age=31536000',
   'Permissions-Policy': 'microphone=(self), camera=(), geolocation=()',
-  'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss://generativelanguage.googleapis.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+  'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss://generativelanguage.googleapis.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; report-uri /api/csp-report"
 };
 function json(data, status = 200, extra = {}) {
   return new Response(JSON.stringify(data), {status, headers: {...headers, 'Content-Type': 'application/json; charset=utf-8', ...extra}});
@@ -179,6 +179,18 @@ export function createWorker(upstream=fetch) {
         return everydaySnapshot(url.searchParams.has('month')?{month:url.searchParams.get('month')}:{},env,requestId);
       }
       if(request.method!=='POST') return fail('Yöntem desteklenmiyor.',405);
+      // Browsers post CSP violations without an Origin header and with a
+      // dedicated content type, so this route sits ahead of the same-origin gate.
+      if(path==='/api/csp-report') {
+        const type=(request.headers.get('Content-Type')||'').toLowerCase();
+        if(!/^application\/(?:csp-report|reports\+json|json)/u.test(type)) return fail('Rapor biçimi desteklenmiyor.',415);
+        if(Number(request.headers.get('Content-Length')||0)>8192) return fail('Rapor çok büyük.',413);
+        const text=await request.text();
+        if(text.length>8192) return fail('Rapor çok büyük.',413);
+        if(!(await env.CHAT_LIMIT.limit({key:rateKey(request,'atlas-csp')})).success) return new Response(null,{status:429});
+        reportError({stage:'csp.report',requestId,error:{name:'CspViolation',message:'csp violation'},meta:{route:'/api/csp-report'}});
+        return new Response(null,{status:204});
+      }
       if(!sameOriginRequest(request,url.origin)) return fail('Bu kaynaktan işlem yapılamaz.',403);
       if(path==='/api/logout') return json({ok:true},200,{'Set-Cookie':cookie('',0)});
       if(path==='/api/login') {

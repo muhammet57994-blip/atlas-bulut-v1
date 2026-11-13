@@ -19,6 +19,40 @@ const collections=[
 import {reportError} from './log.js';
 const enc=new TextEncoder();
 const fail=(error,status=400)=>({status,error,backupOpen:true});
+async function sha256(text){
+ const bytes=await crypto.subtle.digest('SHA-256',enc.encode(text));
+ return Array.from(new Uint8Array(bytes)).map(byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+// The integrity field covers only the data payload, so the envelope can carry
+// metadata without changing the digest.
+export async function verifyBackup(content){
+ try{
+  const parsed=typeof content==='string'?JSON.parse(content):content;
+  if(!parsed||parsed.application!=='ATLAS'||parsed.formatVersion!==1||!parsed.data||typeof parsed.data!=='object')return {ok:false,reason:'biçim'}
+  if(typeof parsed.integrity!=='string'||!/^sha256:[0-9a-f]{64}$/u.test(parsed.integrity))return {ok:false,reason:'bütünlük alanı yok'};
+  const digest='sha256:'+await sha256(JSON.stringify(parsed.data));
+  return digest===parsed.integrity?{ok:true,data:parsed.data}:{ok:false,reason:'özet uyuşmuyor'};
+ }catch{return {ok:false,reason:'okunamadı'};}
+}
+// Offline restore used by the drill test; the app itself still exports only and
+// keeps restoreSupported=false until a reviewed import UI exists.
+export async function restoreBackup(content,env){
+ if(!env?.MEMORY_DB)return fail('Yedek geri yüklemek için ortak depo gerekir.',503);
+ const verified=await verifyBackup(content);
+ if(!verified.ok)return fail('Yedek doğrulanamadı: '+verified.reason+'. Hiçbir kayıt yüklenmedi.');
+ let restored=0;
+ for(const [name,table,fields] of collections){
+  const items=verified.data[name];
+  if(!Array.isArray(items)||!items.length)continue;
+  const columns=fields.split(','),sql=`INSERT OR IGNORE INTO ${table}(${fields}) VALUES(${columns.map(()=>'?').join(',')})`;
+  for(const raw of items){
+   if(!raw||typeof raw!=='object')continue;
+   const row=name==='routines'?{...raw,steps:JSON.stringify(raw.steps??[])}:name==='lists'?{...raw,state_json:JSON.stringify({items:raw.items??[]})}:raw;
+   try{await env.MEMORY_DB.prepare(sql).bind(...columns.map(column=>row[column]??null)).run();restored+=1;}catch{}
+  }
+ }
+ return {status:200,restored,verified:true};
+}
 export function backupCommand(input){
  if(typeof input!=='string')return null;
  const t=input.normalize('NFC').trim().toLocaleLowerCase('tr-TR').replace(/[.!?]+$/u,'').trim();
@@ -58,7 +92,9 @@ export async function createBackup(body,env,now=new Date(),requestId=''){
   if(body.format==='json'){
    data.routines=data.routines.map(({steps,...r})=>({...r,steps:JSON.parse(steps)}));
    data.lists=data.lists.map(({state_json,...r})=>({...r,items:JSON.parse(state_json).items}));
-   content=JSON.stringify({application:'ATLAS',formatVersion:1,exportedAt:now.toISOString(),timezone:'Europe/Istanbul',scope:'current_personal_records_including_archives_and_bill_payment_declarations_budgets_and_waiting',excluded:['credentials','sessions','instagram_connection_and_statistics','change_history','task_completion_history','device_preferences','offline_device_cache','multi_action_receipts'],restoreSupported:false,counts:Object.fromEntries(Object.entries(data).map(([key,rows])=>[key,rows.length])),data},null,2);
+   const envelope={application:'ATLAS',formatVersion:1,exportedAt:now.toISOString(),timezone:'Europe/Istanbul',scope:'current_personal_records_including_archives_and_bill_payment_declarations_budgets_and_waiting',excluded:['credentials','sessions','instagram_connection_and_statistics','change_history','task_completion_history','device_preferences','offline_device_cache','multi_action_receipts'],restoreSupported:false,counts:Object.fromEntries(Object.entries(data).map(([key,rows])=>[key,rows.length])),data};
+   envelope.integrity='sha256:'+await sha256(JSON.stringify(data));
+   content=JSON.stringify(envelope,null,2);
    mime='application/json;charset=utf-8';filename=`ATLAS-yedek-${date}.json`;
   }else if(body.format==='csv'){content=csv(data.expenses);mime='text/csv;charset=utf-8';filename=`ATLAS-harcamalar-${date}.csv`;
   }else{content=calendar(data.agenda,now);mime='text/calendar;charset=utf-8';filename=`ATLAS-ajanda-${date}.ics`;}
