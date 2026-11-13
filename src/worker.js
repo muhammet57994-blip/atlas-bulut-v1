@@ -72,8 +72,7 @@ function sameOriginRequest(request, origin) {
     if (source !== origin) return false;
   }
   const site = request.headers.get('Sec-Fetch-Site');
-  if (site === 'cross-site') return false;
-  if (site && site !== 'same-origin' && site !== 'same-site' && site !== 'none') return false;
+  if (site && !['same-origin','same-site','none'].includes(site)) return false;
   const mode = request.headers.get('Sec-Fetch-Mode');
   if (mode && mode !== 'cors' && mode !== 'navigate') return false;
   return true;

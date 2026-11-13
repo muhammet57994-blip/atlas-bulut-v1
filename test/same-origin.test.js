@@ -6,7 +6,7 @@ function req(path,headers={}){return new Request(origin+path,{method:'POST',head
 
 test('POST endpoints reject foreign Origin, Referer, cross-site and disallowed fetch modes',async()=>{
  const w=createWorker(),e=env();
- for(const headers of [{Origin:'https://evil.example'},{Origin:origin,Referer:'https://evil.example/panel'},{Origin:origin,'Sec-Fetch-Site':'cross-site'},{Origin:origin,'Sec-Fetch-Mode':'no-cors'},{Origin:origin,'Sec-Fetch-Mode':'websocket'}]){
+ for(const headers of [{Origin:'https://evil.example'},{Origin:''},{Origin:'null'},{Origin:origin,Referer:'https://evil.example/panel'},{Origin:origin,Referer:'not a url'},{Origin:origin,'Sec-Fetch-Site':'cross-site'},{Origin:origin,'Sec-Fetch-Site':'banana'},{Origin:origin,'Sec-Fetch-Mode':'no-cors'},{Origin:origin,'Sec-Fetch-Mode':'websocket'}]){
   assert.equal((await w.fetch(req('/api/organize',headers),e)).status,403,JSON.stringify(headers)+' must be refused');
  }
 });
@@ -24,6 +24,7 @@ test('GET /api/everyday applies the same origin gate',async()=>{
  assert.equal((await w.fetch(new Request(origin+'/api/everyday',{method:'GET',headers:{Origin:'https://evil.example'}}),e)).status,403);
  assert.equal((await w.fetch(new Request(origin+'/api/everyday',{method:'GET',headers:{Referer:'https://evil.example/panel'}}),e)).status,403);
  assert.equal((await w.fetch(new Request(origin+'/api/everyday',{method:'GET',headers:{'Sec-Fetch-Site':'cross-site'}}),e)).status,403);
+ assert.equal((await w.fetch(new Request(origin+'/api/everyday',{method:'GET',headers:{'Sec-Fetch-Mode':'no-cors'}}),e)).status,403);
  // absent headers pass the gate and then fail authentication
  assert.equal((await w.fetch(new Request(origin+'/api/everyday',{method:'GET'}),e)).status,401);
 });

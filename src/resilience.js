@@ -4,33 +4,35 @@
 
 export function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-export function isTransientNetworkError(error) {
-  if (!error) return false;
-  const code = typeof error.code === 'string' ? error.code : '';
-  const message = typeof error.message === 'string' ? error.message : String(error);
-  return /fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket hang up|network/i.test(message + ' ' + code) &&
-    !/abort/i.test(message + ' ' + code);
+function errorText(error) {
+  if (!error) return '';
+  return (typeof error.message === 'string' ? error.message : String(error)) + ' ' + (typeof error.code === 'string' ? error.code : '');
 }
 
-export async function retry(fn, { attempts = 2, baseDelay = 100, factor = 3, shouldRetry = null, shouldRetryError = isTransientNetworkError } = {}) {
-  let last;
-  for (let i = 0; i < attempts; i++) {
+export function isTransientNetworkError(error) {
+  const text = errorText(error);
+  if (!text || /abort/iu.test(text)) return false;
+  return /fetch failed|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket hang up|network/iu.test(text);
+}
+
+export function isTransientD1Error(error) {
+  const text = errorText(error);
+  if (!text || /no such (table|column|function)|constraint failed|syntax error|SQLITE_CONSTRAINT/iu.test(text)) return false;
+  return /network|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|SQLITE_BUSY|database is locked|temporarily unavailable|fetch failed/iu.test(text);
+}
+
+// Retries only when the error is transient. A returned value (including an HTTP
+// error response) is passed straight through, so provider status handling stays
+// in the caller.
+export async function retry(fn, { attempts = 2, baseDelay = 100, factor = 3, shouldRetryError = isTransientNetworkError } = {}) {
+  for (let i = 0; ; i++) {
     try {
-      const result = await fn();
-      if (shouldRetry && shouldRetry(result) === true) {
-        last = result;
-        if (i < attempts - 1) await sleep(baseDelay * Math.pow(factor, i));
-        continue;
-      }
-      return result;
+      return await fn();
     } catch (error) {
-      last = error;
       if (i === attempts - 1 || !shouldRetryError(error)) throw error;
       await sleep(baseDelay * Math.pow(factor, i));
     }
   }
-  if (last instanceof Error) throw last;
-  return last;
 }
 
 export class CircuitBreaker {
@@ -44,8 +46,7 @@ export class CircuitBreaker {
   get isOpen() {
     if (this.failures < this.threshold) return false;
     if (Date.now() - this.openedAt >= this.resetMs) {
-      this.failures = 0;
-      this.openedAt = 0;
+      this.recordSuccess();
       return false;
     }
     return true;
@@ -55,71 +56,47 @@ export class CircuitBreaker {
     this.failures += 1;
     if (this.failures >= this.threshold && !this.openedAt) this.openedAt = Date.now();
   }
-  async execute(fn) {
-    if (this.isOpen) {
-      const err = new Error(`circuit open: ${this.name}`);
-      err.code = 'CIRCUIT_OPEN';
-      err.status = 503;
-      throw err;
-    }
-    try {
-      const result = await fn();
-      this.recordSuccess();
-      return result;
-    } catch (error) {
-      this.recordFailure();
-      throw error;
-    }
-  }
-}
-
-export function isTransientD1Error(error) {
-  if (!error) return false;
-  const text = (typeof error.message === 'string' ? error.message : String(error)) + ' ' + (typeof error.code === 'string' ? error.code : '');
-  if (/no such (table|column|function)|constraint failed|syntax error|SQLITE_CONSTRAINT/iu.test(text)) return false;
-  return /network|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN|SQLITE_BUSY|database is locked|temporarily unavailable|fetch failed|D1_ERROR:.*(?:busy|timed out)/iu.test(text);
 }
 
 // Wraps a D1 database so prepared statements keep their shape but gain a single
 // retry on transient failures and a shared circuit breaker. Non-transient errors
 // (schema, constraints) propagate immediately and never trip the breaker.
+const RAW = Symbol('atlas.raw-statement');
+
 export function resilientDb(db, { name = 'd1', attempts = 2, baseDelay = 50 } = {}) {
   if (!db || typeof db.prepare !== 'function') return db;
   const cb = breaker(name, { threshold: 8, resetMs: 30000 });
-  const statement = (sql) => {
-    let bound = [];
-    const target = () => {
-      const stmt = db.prepare(sql);
-      return bound.length ? stmt.bind(...bound) : stmt;
-    };
-    const exec = (method, args) => {
-      if (cb.isOpen) {
-        const error = new Error(`circuit open: ${name}`);
-        error.code = 'CIRCUIT_OPEN';
-        throw error;
-      }
-      return retry(() => target()[method](...args), {attempts, baseDelay, factor: 3, shouldRetryError: isTransientD1Error})
-        .then(result => { cb.recordSuccess(); return result; })
-        .catch(error => { if (isTransientD1Error(error)) cb.recordFailure(); throw error; });
-    };
-    const proxy = new Proxy({}, {
-      get(_target, prop) {
-        if (prop === 'bind') return (...args) => { bound = args; return proxy; };
-        if (prop === 'sql') return sql;
-        if (prop === 'run' || prop === 'first' || prop === 'all' || prop === 'raw') return (...args) => exec(prop, args);
-        const value = target()[prop];
-        return typeof value === 'function' ? value.bind(target()) : value;
-      }
-    });
-    return proxy;
-  };
-  return new Proxy(db, {
-    get(target, prop) {
-      if (prop === 'prepare') return (sql) => statement(sql);
-      const value = target[prop];
-      return typeof value === 'function' ? value.bind(target) : value;
+  const guarded = run => {
+    if (cb.isOpen) {
+      const error = new Error(`circuit open: ${name}`);
+      error.code = 'CIRCUIT_OPEN';
+      // Reject like D1 does; a synchronous throw would escape promise chains.
+      return Promise.reject(error);
     }
-  });
+    return retry(run, { attempts, baseDelay, shouldRetryError: isTransientD1Error })
+      .then(result => { cb.recordSuccess(); return result; })
+      .catch(error => { if (isTransientD1Error(error)) cb.recordFailure(); throw error; });
+  };
+  const statement = (sql, bound = []) => {
+    const build = () => {
+      const prepared = db.prepare(sql);
+      return bound.length ? prepared.bind(...bound) : prepared;
+    };
+    const exec = (method, args) => guarded(() => build()[method](...args));
+    return {
+      bind: (...args) => statement(sql, args),
+      first: (...args) => exec('first', args),
+      all: (...args) => exec('all', args),
+      run: (...args) => exec('run', args),
+      [RAW]: build
+    };
+  };
+  const wrapped = {prepare: sql => statement(sql)};
+  // D1 batch() takes prepared statements; rebuild the real ones and retry the group.
+  if (typeof db.batch === 'function') {
+    wrapped.batch = statements => guarded(() => db.batch(statements.map(item => item?.[RAW] ? item[RAW]() : item)));
+  }
+  return wrapped;
 }
 
 // Module-level breakers shared within an isolate.

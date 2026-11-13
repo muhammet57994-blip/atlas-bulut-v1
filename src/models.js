@@ -48,7 +48,7 @@ export async function modelRequest(env, payload, {upstream = fetch, signal} = {}
           headers: {'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY},
           body: JSON.stringify(payload)
         }),
-        {attempts: 2, baseDelay: 100, factor: 3, shouldRetry: isTransientNetworkError}
+        {attempts: 2, baseDelay: 100}
       );
       if (response.status !== 429) { cb.recordSuccess(); return {model, response, quotaExhausted: false, circuitOpen: false}; }
       last = {model, response, quotaExhausted: true, circuitOpen: false};
@@ -56,7 +56,9 @@ export async function modelRequest(env, payload, {upstream = fetch, signal} = {}
     cb.recordSuccess();
     return last;
   } catch (error) {
-    cb.recordFailure();
+    // A timeout or a refused request is not an outage; only transient network
+    // failures count towards opening the breaker.
+    if (isTransientNetworkError(error)) cb.recordFailure();
     throw error;
   }
 }
