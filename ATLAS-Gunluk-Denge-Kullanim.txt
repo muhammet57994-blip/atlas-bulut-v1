@@ -1,0 +1,43 @@
+ATLAS — Günlük denge ve çevrimdışı kayıtlar
+
+Adres: https://atlas-pasam-v1.pages.dev/
+Bilgisayar: http://localhost:8790/
+
+1. GÜNÜMÜ TOPARLA
+“Atlas” ile uyandır düğmesine dokunup “Atlas” deyin; ardından “Günümü toparla” komutunu verin. Mikrofon açılışta otomatik başlamaz. İsterseniz Ses ayarlarından “Açılışta Atlas dinle” seçeneğini etkinleştirin.
+Araçlar > Günümü toparla ve faturalar bölümünden günü, çalışma aralığını ve iş sürelerini seçebilirsiniz.
+Normal randevularınız sabit kalır. Açık, gecikmiş veya tarihsiz işlerden en fazla 10 tanesi boş saatlere önerilir.
+Her işin önceki ve önerilen saatini inceleyin. “Gün planını onaylıyorum” demeden veya onay düğmesine basmadan ajandanız değişmez.
+Bu işlem görevleri tamamlamaz; son tarihlerini değiştirmez. Yerleşmeyen işleri ayrıca gösterir. Seçilen günün çalışma saati bittiyse aralığı veya günü siz değiştirirsiniz.
+
+2. FATURA VE ABONELİKLER
+“Faturalarımı göster” deyin veya Araçlar > Günümü toparla ve faturalar > Faturalar bölümünü açın.
+Ad, tutar, para birimi, başlangıç tarihi ve aylık/yıllık/tek sefer seçimini yapın; önce önizleyin.
+“Ödeme kaydını onaylıyorum” onayıyla kaydedilir. Değiştirme ve arşivleme de ayrı onay ister.
+“Ödendi olarak kaydet” seçeneği ödeme beyanınızı ve aynı tutarlı harcamayı birlikte hazırlar. Gerçek ödeme yapmaz, banka hesabına erişmez.
+Yaklaşan vadeler ile planlanan/ödenmemiş tutarlar ayrı gösterilir. En eski ödenmemiş dönem gösterimi tüm geçmiş borçların toplamı değildir.
+Harcama defterinde sonradan yaptığınız düzeltme, ödeme geçmişinin ilk beyanını silmez; ikisi açıkça ayrı gösterilir.
+Telefon ve bilgisayardaki kayıtlar ortaktır. Otomatik ödeme veya kapalı ekran alarmı yoktur.
+
+3. ÇEVRİMDIŞI KAYITLAR
+İnternet açıkken Araçlar > Çevrimdışı kayıtlar bölümünü açın.
+“Kopyalanacak kayıtları seç / yenile” ile bu cihazda bulunmasını istediğiniz notları ve listeleri seçin. Önceden seçili kayıt yoktur.
+Cihazda saklama açıklamasını okuyup izin verin. En fazla 20 not ve 10 liste kopyalanır. Boş seçimle yalnızca yeni not taslakları tutabilirsiniz.
+İnternet kesildiğinde ATLAS’ın aynı adresini açın: seçtiğiniz kopya ve yazılı taslak alanı açılır.
+Yeni not, not düzeltmesi, liste maddesi veya madde durumu taslağı oluşturabilirsiniz. En fazla 20 yerel taslak saklanır.
+Bağlantı geldiğinde hiçbir taslak kendiliğinden gönderilmez. “Bağlantıyı kontrol et”, ardından ilgili taslakta “İncele” seçin.
+Güncel bulut kaydıyla karşılaştırılan önizlemeyi onaylayın. Ancak onaylanan değişiklik diğer cihazda görünür.
+Kayıt başka cihazda değişmişse eski taslak uygulanmaz. Güncel kopyayı alın, yeni bir taslak oluşturun ve tekrar inceleyin.
+Çevrimdışı kopyalar her cihazda ve her adreste ayrı açılır. Telefonunuz için bu seçimi telefonda da yapın.
+Bu alan yazılı çalışır. Hey Atlas, ses tanıma ve doğal sesli yanıtlar için internet gerekir.
+Güvendiğiniz cihazda kullanın: cihazı kullanan kişiler kopyaya erişebilir. Çıkış veya oturumun kapandığının doğrulanması yerel kopya ve gönderilmemiş taslakları temizler. Tarayıcı verisini temizlemek de cihaz kopyasını kaldırır; bu alan yedekleme yerine geçmez.
+
+ÜCRET
+Bu üç özellik için yeni ücretli hizmet veya ek metin modeli çağrısı eklenmedi. Kayıtlar mevcut Cloudflare/D1 altyapısında, çevrimdışı taslaklar cihazınızda tutulur. Seslendirme mevcut Gemini kotasını kullanır. Ücretsiz kotalar sınırsız değildir; ücretli plana otomatik geçilmez.
+Resmî sınırlar: https://developers.cloudflare.com/workers/platform/pricing/
+https://developers.cloudflare.com/d1/platform/pricing/
+
+DENEME
+Önce “Günümü toparla” diyerek önizlemeyi açın; istemediğiniz değişiklikte Vazgeç seçin.
+Bir fatura ekleyip telefonda ve bilgisayarda aynı kaydın göründüğünü kontrol edin.
+Çevrimdışı alanı her cihazda açık izinle etkinleştirin. Android mikrofon/hoparlör denemesi fiziksel telefonunuzda yapılmalıdır.
