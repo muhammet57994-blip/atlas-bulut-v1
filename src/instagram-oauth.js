@@ -25,6 +25,12 @@ function appId(env){
  return /^\d{6,32}$/u.test(value)?value:DEFAULT_APP;
 }
 function sameOriginStart(request,origin){
+ // The callback is only ever a top-level redirect from Meta. Any browser request
+ // that declares another fetch mode (cors, no-cors, same-origin, websocket,
+ // nested-navigate) is scripted or framed, so it is refused outright. Requests
+ // without the header keep the older origin and referer behaviour.
+ const mode=request.headers.get('Sec-Fetch-Mode');
+ if(mode&&mode!=='navigate')return false;
  const source=request.headers.get('Origin');
  if(source&&source!==origin)return false;
  const referer=request.headers.get('Referer');
