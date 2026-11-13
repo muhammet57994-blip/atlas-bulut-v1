@@ -146,6 +146,9 @@ async function confirm(body,env,now,requestId=''){
  }catch(error){
   if(await receipt())return replay();
   if(/replan receipt limit/u.test(String(error?.message)))return fail('Efendim, gün planı onay geçmişi 5000 kayıt sınırına ulaştı. Mevcut kayıtlar korunuyor; yeni plan uygulanmadı.',409);
+  // A failed approval used to look like a stale draft with no trace; keep it
+  // tied to the request instead of swallowing the database error.
+  reportError({stage:'db.replan.approve',requestId,error,meta:{table:'atlas_replan_receipts'}});
   return stale();
  }
  if(!await receipt())return stale();
