@@ -35,3 +35,14 @@ jobs:
       # Sırlar veya Cloudflare oturumu gerekmez: paketleme yapılır, yayın yapılmaz.
       - name: Worker paketini doğrula
         run: pnpm exec wrangler deploy --dry-run --outdir .wrangler/dry-run
+
+      # D1 sözleşmesi: migration'lar ve kritik sorgular gerçek workerd/Miniflare
+      # üzerinde çalışır, böylece D1'e özgü davranış CI'da yakalanır.
+      - name: Yerel D1 migration'ları
+        run: pnpm exec wrangler d1 migrations apply atlas-memory --local
+
+      - name: D1 sözleşme sorguları
+        run: |
+          pnpm exec wrangler d1 execute atlas-memory --local --command "SELECT json_extract('{\"a\":1}','$.a') AS a"
+          pnpm exec wrangler d1 execute atlas-memory --local --command "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('atlas_settings','atlas_memories') ORDER BY name"
+          pnpm exec wrangler d1 execute atlas-memory --local --command "SELECT name FROM sqlite_master WHERE type='trigger' AND name='atlas_list_changes_no_delete'"

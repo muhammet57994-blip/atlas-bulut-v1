@@ -19,13 +19,13 @@ async function api(path,body){
   const response=await fetch('/api/'+path,{method:body===undefined?'GET':'POST',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),credentials:'same-origin',signal:AbortSignal.timeout(55000)});
   if(response.status===401&&path==='login')await Promise.resolve(window.clearOfflineDevice?.()).catch(()=>{});if(response.status===401&&path!=='login'&&path!=='session')expireSession();let data;try{data=await response.json();}catch(error){if(response.ok)throw error;data={};}if(!response.ok){const error=new Error(data.error||'İşlem tamamlanamadı.');error.status=response.status;error.data=data;throw error;}return data;
 }
-function showLogin(preserveOffline=true){if(!preserveOffline)Promise.resolve(window.clearOfflineDevice?.()).catch(()=>{});taskContext=null;window.clearPlanning?.();window.clearCompanion?.();window.clearExperience?.();window.clearDaily?.();window.clearOrganize?.();window.clearDayflow?.();window.clearEveryday?.();clearVoiceCache();loggedIn=false;$('logout').hidden=true;$('connection').textContent='Giriş gerekli';if(!$('loginDialog').open)$('loginDialog').showModal();}
+function showLogin(preserveOffline=true){if(!preserveOffline)Promise.resolve(window.clearOfflineDevice?.()).catch(()=>{});taskContext=null;window.clearPlanning?.();window.clearCompanion?.();window.clearExperience?.();window.clearDaily?.();window.clearOrganize?.();window.clearDayflow?.();window.clearEveryday?.();clearVoiceCache();loggedIn=false;$('logout').hidden=true;$('logoutAll').hidden=true;$('connection').textContent='Giriş gerekli';if(!$('loginDialog').open)$('loginDialog').showModal();}
 function expireSession(){
  endConversation('Oturum süresi doldu. Yeniden giriş yapın.');history=[];$('messages').replaceChildren();$('welcome').hidden=false;$('message').value='';
  for(const dialog of document.querySelectorAll('dialog[open]'))if(dialog.id!=='loginDialog')dialog.close();
  showLogin(false);$('loginError').textContent='Oturum süresi doldu. Devam etmek için yeniden giriş yapın.';
 }
-function setLoggedIn(){loggedIn=true;$('loginDialog').close();$('logout').hidden=false;$('connection').textContent='Özel oturum açık';window.startDaily?.();}
+function setLoggedIn(){loggedIn=true;$('loginDialog').close();$('logout').hidden=false;$('logoutAll').hidden=false;$('connection').textContent='Özel oturum açık';window.startDaily?.();}
 async function showMemories(){
  endConversation();if(!loggedIn){showLogin();return;}
  if(!$('memoryDialog').open)$('memoryDialog').showModal();
@@ -167,6 +167,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&conversation)endCon
 $('stopVoice').addEventListener('click',stopAudio);
 $('loginDialog').addEventListener('cancel',e=>e.preventDefault());
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();$('loginButton').disabled=true;$('loginError').textContent='';try{await api('login',{password:$('password').value});$('password').value='';setLoggedIn();notice('Hazırım Efendim. Nereden başlayalım?');tryAutoWake();}catch(error){$('loginError').textContent=error.message;}finally{$('loginButton').disabled=false;}});
+$('logoutAll').addEventListener('click',async()=>{if(busy){notice('Yanıt tamamlanınca çıkış yapabilirsiniz.');return;}try{await api('session/revoke-all',{});stopAudio();history=[];$('messages').replaceChildren();$('message').value='';$('welcome').hidden=false;showLogin(false);notice('Tüm cihazlardaki oturumlar kapatıldı. Yeniden giriş yapın.');}catch(error){notice(error.message);}});
 $('logout').addEventListener('click',async()=>{if(busy){notice('Yanıt tamamlanınca çıkış yapabilirsiniz.');return;}try{await api('logout',{});stopAudio();history=[];$('messages').replaceChildren();$('message').value='';$('welcome').hidden=false;showLogin(false);notice('');}catch(error){notice(error.message);}});
 $('newChat').addEventListener('click',()=>{if(busy){notice('Önce mevcut yanıtın tamamlanmasını bekleyin.');return;}if(history.length&&!confirm('Bu sekmedeki konuşmayı temizleyip yeni sohbet başlatılsın mı?'))return;stopAudio();window.clearExperience?.();window.clearDaily?.();window.clearOrganize?.();window.clearDayflow?.();window.clearEveryday?.();taskContext=null;if(loggedIn)window.startDaily?.();history=[];$('messages').replaceChildren();$('welcome').hidden=false;$('message').value='';notice('Yeni bir başlangıç.');$('message').focus();});
 document.querySelectorAll('[data-prompt]').forEach(button=>button.addEventListener('click',()=>{$('message').value=button.dataset.prompt;$('message').focus();}));

@@ -38,8 +38,11 @@
     if ((Number.isFinite(declaredSize) && declaredSize > MAX_BYTES) || byteLength > MAX_BYTES) return {ok:false,error:'Dosya 4 MiB sınırını aşıyor.'};
     let doc;
     try { doc=JSON.parse(text); } catch { return {ok:false,error:'Dosya geçerli JSON değil.'}; }
-    const topKeys=['application','formatVersion','exportedAt','timezone','scope','excluded','restoreSupported','counts','data'];
+    const baseKeys=['application','formatVersion','exportedAt','timezone','scope','excluded','restoreSupported','counts','data'];
+    // The digest is present in exports from 13 Nov 2026; older files stay readable.
+    const topKeys=Object.hasOwn(doc,'integrity')?[...baseKeys,'integrity']:baseKeys;
     if (!exactKeys(doc,topKeys) || doc.application!=='ATLAS' || doc.formatVersion!==1 || doc.timezone!=='Europe/Istanbul' || doc.scope!==scope || doc.restoreSupported!==false) return {ok:false,error:'Bu dosya desteklenen ATLAS JSON yedeği biçiminde değil.'};
+    if (doc.integrity!==undefined && (typeof doc.integrity!=='string' || !/^sha256:[0-9a-f]{64}$/u.test(doc.integrity))) return {ok:false,error:'Yedeğin bütünlük özeti bozuk. Dosya açılmadı.'};
     if (typeof doc.exportedAt!=='string' || !Number.isFinite(Date.parse(doc.exportedAt)) || !Array.isArray(doc.excluded) || JSON.stringify(doc.excluded)!==JSON.stringify(excluded)) return {ok:false,error:'Yedek üst bilgileri doğrulanamadı.'};
     const groups=Object.keys(schema);
     if (!exactKeys(doc.data,groups) || !exactKeys(doc.counts,groups) || !safeTree(doc.data)) return {ok:false,error:'Yedekte eksik, desteklenmeyen veya güvenli olmayan alan var.'};

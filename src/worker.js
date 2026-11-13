@@ -34,6 +34,7 @@ import {reportError} from './log.js';
 import {resilientDb} from './resilience.js';
 import {sweepExpired} from './cleanup.js';
 import {diagnosticsSnapshot} from './diagnostics.js';
+import {sessionEpoch,bumpSessionEpoch} from './session-version.js';
 import {healthSnapshot} from './health.js';
 const enc = new TextEncoder();
 const COOKIE = '__Host-atlas';
@@ -94,7 +95,9 @@ function configured(env) {
 }
 async function mint(env) {
   const pwd = b64(await digest(env.ATLAS_ACCESS_PASSWORD));
-  const payload = b64(enc.encode(JSON.stringify({exp:Math.floor(Date.now()/1000)+TTL,pwd})));
+  // The epoch pins this cookie to the moment it was issued; revoking every device
+  // is one settings write, not a password change.
+  const payload = b64(enc.encode(JSON.stringify({exp:Math.floor(Date.now()/1000)+TTL,pwd,ver:await sessionEpoch(env)})));
   return payload+'.'+b64(await crypto.subtle.sign('HMAC', await key(env.SESSION_SECRET), enc.encode(payload)));
 }
 async function deviceAuthorized(request, env) {
@@ -114,7 +117,12 @@ async function authenticated(request, env) {
     if(!await crypto.subtle.verify('HMAC',await key(env.SESSION_SECRET),unb64(signature),enc.encode(payload))) return false;
     const data=JSON.parse(new TextDecoder().decode(unb64(payload)));
     const now=Math.floor(Date.now()/1000);
-    return Number.isInteger(data.exp) && data.exp>now && data.exp<=now+TTL && data.pwd===b64(await digest(env.ATLAS_ACCESS_PASSWORD));
+    if(!(Number.isInteger(data.exp) && data.exp>now && data.exp<=now+TTL && data.pwd===b64(await digest(env.ATLAS_ACCESS_PASSWORD)))) return false;
+    // Tokens minted before a revocation carry an older epoch. A token without any
+    // ver claim predates the feature; it stays valid and is upgraded on the next
+    // session check, after which revocation reaches that device too.
+    if(data.ver===undefined) return true;
+    return Number.isInteger(data.ver) && data.ver===await sessionEpoch(env);
   } catch { return false; }
 }
 function cookie(value, age=TTL) { return `${COOKIE}=${value}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${age}`; }
@@ -192,6 +200,12 @@ export function createWorker(upstream=fetch) {
         return new Response(null,{status:204});
       }
       if(!sameOriginRequest(request,url.origin)) return fail('Bu kaynaktan işlem yapılamaz.',403);
+      if(path==='/api/session/revoke-all') {
+        if(!await authenticated(request,env)) return fail('Oturumunuz kapalı. Yeniden giriş yapın.',401);
+        if(!env.MEMORY_DB) return fail('Oturum deposu henüz hazır değil.',503);
+        try { await bumpSessionEpoch(env); } catch(error) { reportError({stage:'session.revoke',requestId,error}); return fail('Oturumlar şu anda kapatılamadı. Lütfen yeniden deneyin.',503); }
+        return json({ok:true},200,{'Set-Cookie':cookie('',0)});
+      }
       if(path==='/api/logout') return json({ok:true},200,{'Set-Cookie':cookie('',0)});
       if(path==='/api/login') {
         if(!(await env.LOGIN_LIMIT.limit({key:rateKey(request,'atlas-login')})).success) return fail('Çok fazla giriş denemesi. Bir dakika bekleyin.',429);
