@@ -68,7 +68,9 @@ export async function finishInstagramOAuth(request,env,upstream=fetch,requestId=
  const url=new URL(request.url),state=url.searchParams.get('state'),code=url.searchParams.get('code');
  const saved=request.headers.get('Cookie')?.split(';').map(v=>v.trim()).find(v=>v.startsWith('__Host-atlas-ig='))?.slice(16);
  const finish=result=>new Response(null,{status:303,headers:{Location:origin+'/?instagram='+result,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Set-Cookie':cookie('',0)}});
- if(!sameOriginStart(request,origin))return json({error:'Bu kaynaktan işlem yapılamaz.'},403);
+ // A refused attempt drops the half-written state cookie too, so the browser is
+ // not left holding a state that no callback will ever accept.
+ if(!sameOriginStart(request,origin))return json({error:'Bu kaynaktan işlem yapılamaz.'},403,{'Set-Cookie':cookie('',0)});
  if(url.origin!==origin||!state||! /^[a-f0-9]{64}$/.test(state)||saved!==state||!env.MEMORY_DB||!env.INSTAGRAM_APP_SECRET)return finish('state');
  const claimed=await env.MEMORY_DB.prepare('DELETE FROM atlas_instagram_oauth WHERE state_hash=? AND expires_at>=? RETURNING state_hash').bind(await hash(state,env),Math.floor(Date.now()/1000)).first();
  if(!claimed)return finish('state');
