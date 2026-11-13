@@ -9,6 +9,7 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true, "html_handling": "none" },
   "vars": { "GEMINI_MODEL": "gemini-3.5-flash-lite" },
   "observability": { "enabled": true },
+  "triggers": { "crons": ["17 4 * * *"] },
   "ratelimits": [
     { "name": "LOGIN_LIMIT", "namespace_id": "8642101", "simple": { "limit": 5, "period": 60 } },
     { "name": "CHAT_LIMIT", "namespace_id": "8642102", "simple": { "limit": 6, "period": 60 } }

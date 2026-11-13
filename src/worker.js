@@ -32,6 +32,7 @@ import {multiCommand,multiRequest} from './multi-actions.js';
 import {codeRequest,normalizeResearchResults,researchRequest,webSearchTool} from './research.js';
 import {reportError} from './log.js';
 import {resilientDb} from './resilience.js';
+import {sweepExpired} from './cleanup.js';
 import {healthSnapshot} from './health.js';
 const enc = new TextEncoder();
 const COOKIE = '__Host-atlas';
@@ -372,7 +373,10 @@ export function createWorker(upstream=fetch) {
       return fail(error?.status===413?'Mesaj boyutu sınırı aşıldı.':error?.status===415?'JSON biçimi gerekli.':error?.status===400?'Mesaj okunamadı.':'İşlem tamamlanamadı. Lütfen yeniden deneyin.',[400,413,415].includes(error?.status)?error.status:503);
     }
   }};
-  return {async fetch(request,env){
+  return {
+  // Cloudflare cron trigger: keep expired state and old history out of D1.
+  async scheduled(event,env,ctx){ctx.waitUntil(sweepExpired(env,new Date()));},
+  async fetch(request,env){
     const requestId=crypto.randomUUID();
     // One transient-failure layer for every D1 read and write reached through env.
     if(env?.MEMORY_DB)env={...env,MEMORY_DB:resilientDb(env.MEMORY_DB)};

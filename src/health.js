@@ -25,7 +25,9 @@ export const MIGRATIONS = [
   {version: '0015', name: '0015_offline.sql', tables: ['atlas_offline_receipts']},
   {version: '0016', name: '0016_budgets.sql', tables: ['atlas_budgets', 'atlas_budget_operations']},
   {version: '0017', name: '0017_waiting.sql', tables: ['atlas_waiting', 'atlas_waiting_operations']},
-  {version: '0018', name: '0018_multi.sql', tables: ['atlas_multi_receipts']}
+  {version: '0018', name: '0018_multi.sql', tables: ['atlas_multi_receipts']},
+  // Retention migration: it only replaces delete triggers, so it creates no table.
+  {version: '0019', name: '0019_retention.sql', tables: []}
 ];
 
 export const REQUIRED_TABLES = MIGRATIONS.flatMap(migration => migration.tables);

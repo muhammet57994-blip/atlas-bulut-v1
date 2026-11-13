@@ -1,4 +1,5 @@
 import {saveInstagramAuthorization} from './instagram-account.js';
+import {maybeSweep} from './cleanup.js';
 import {reportError} from './log.js';
 import {parseMetaJSON} from './meta-json.js';
 const DEFAULT_ORIGIN='https://atlas-pasam-v1.pages.dev',DEFAULT_APP='1162087043047938';
@@ -58,6 +59,8 @@ export async function startInstagramOAuth(request,env){
  const state=Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b=>b.toString(16).padStart(2,'0')).join('');
  const now=Math.floor(Date.now()/1000);
  await env.MEMORY_DB.prepare('DELETE FROM atlas_instagram_oauth WHERE expires_at < ?').bind(now).run();
+ // Opportunistic TTL sweep; throttled per isolate so the common path stays cheap.
+ await maybeSweep(env, new Date()).catch(()=>{});
  await env.MEMORY_DB.prepare('INSERT INTO atlas_instagram_oauth (state_hash,expires_at) VALUES (?,?)').bind(await hash(state,env),now+600).run();
  const url=new URL('https://www.instagram.com/oauth/authorize');
  for(const [k,v] of Object.entries({client_id:appId(env),redirect_uri:callback,response_type:'code',scope:SCOPES,state,enable_fb_login:'0'}))url.searchParams.set(k,v);
