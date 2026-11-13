@@ -10,6 +10,7 @@ import {sharedApi} from './shared-api.mjs';
 const PORT=8790, origin=`http://localhost:${PORT}`;
 const folder=path.join(process.env.LOCALAPPDATA,'ATLAS');
 const configFile=path.join(folder,'secrets.dpapi');
+const deviceTokenFile=path.join(folder,'device-token.dpapi');
 // Enabled only after the shared-memory release has been approved and deployed.
 let sharedMemory=false;
 try{sharedMemory=JSON.parse(await readFile(path.join(folder,'cloud-memory.json'),'utf8')).enabled===true;}catch{}
@@ -20,6 +21,8 @@ function protect(input,action){return new Promise((resolve,reject)=>{
 });}
 let config=null;
 try{config=JSON.parse(await protect(await readFile(configFile,'utf8'),'Unprotect'));}catch(e){if(e.code!=='ENOENT'){console.error('ATLAS yapılandırması okunamadı. Dosyalar korunuyor.');process.exit(1);}}
+let deviceToken='';
+try{deviceToken=(await protect(await readFile(deviceTokenFile,'utf8'),'Unprotect')).trim();}catch(e){if(e.code!=='ENOENT')console.error('Cihaz belirteci okunamadı. Bulut kayıtları bu oturumda kapalı.');}
 const buckets=new Map();
 function limiter(max){return {async limit({key}){const now=Math.floor(Date.now()/60000),old=buckets.get(key);const count=old?.minute===now?old.count+1:1;buckets.set(key,{minute:now,count});return {success:count<=max};}};}
 const LOGIN_LIMIT=limiter(5),CHAT_LIMIT=limiter(6);
@@ -52,7 +55,7 @@ const server=http.createServer(async(req,res)=>{
   const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>(url.pathname==='/api/instagram/analyze'?4300000:url.pathname==='/api/visual/analyze'?3*1024*1024:32768)){send(res,413,'{}');return;}chunks.push(chunk);}
   const request=new Request(url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})});
   const env={...config,GEMINI_MODEL:'gemini-3.5-flash-lite',LOGIN_LIMIT,CHAT_LIMIT,ASSETS:{async fetch(r){const p=new URL(r.url).pathname;try{const data=await readFile(new URL('../public/'+(p==='/'?'index.html':p.slice(1)),import.meta.url));return new Response(data,{headers:{'Content-Type':p.endsWith('.js')?'text/javascript':p.endsWith('.css')?'text/css':p.endsWith('.svg')?'image/svg+xml':p.endsWith('.wav')?'audio/wav':p.endsWith('.png')?'image/png':p.endsWith('.webmanifest')?'application/manifest+json':'text/html; charset=utf-8'}});}catch{return new Response('Not found',{status:404});}}}};
-  const response=sharedMemory&&url.pathname.startsWith('/api/')?await sharedApi(request):await worker.fetch(request,env);send(res,response.status,Buffer.from(await response.arrayBuffer()),Object.fromEntries(response.headers));
+  const response=sharedMemory&&url.pathname.startsWith('/api/')?await sharedApi(request,fetch,deviceToken||process.env.ATLAS_DEVICE_TOKEN):await worker.fetch(request,env);send(res,response.status,Buffer.from(await response.arrayBuffer()),Object.fromEntries(response.headers));
  }catch{send(res,500,'{"error":"İşlem tamamlanamadı. Sırlar kayda yazılmadı."}',{'Content-Type':'application/json'});}
 });
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?'ATLAS zaten çalışıyor olabilir.':'ATLAS başlatılamadı.');process.exit(1);});
