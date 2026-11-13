@@ -1,6 +1,6 @@
 Güncel sürüm: Günümü toparla, fatura/abonelik takibi, seçime bağlı çevrimdışı kayıtlar, Kodlama Yardımcısı ve cihaz içinde çalışan salt okunur yedek önizlemesi yayında. Canlı yedek önizlemesi ve doğrulama: [BACKUP-PREVIEW-RELEASE.md](BACKUP-PREVIEW-RELEASE.md). Son mobil, araştırma ve mikrofon kontrolleri: [FOLLOW-UP-2026-11-08.md](FOLLOW-UP-2026-11-08.md). Canlı dağıtım kimliği ve doğrulama: [CODE-ASSIST-RELEASE.md](CODE-ASSIST-RELEASE.md). Geri yükleme güvenli tasarımı (yazma/ithal etme henüz uygulanmadı): [RESTORE-DESIGN.md](RESTORE-DESIGN.md). Araştırma kaynak bağlantısı düzeltmesi ve test kapsamı: [RESEARCH-RELEASE.md](RESEARCH-RELEASE.md). Önceki günlük denge yayını: [DAYFLOW-RELEASE.md](DAYFLOW-RELEASE.md). Kullanım: [Türkçe rehber](ATLAS-Gunluk-Denge-Kullanim.txt).
 
-**Test durumu:** 608/608 otomatik test geçti (13 Kasım 2026, `pnpm test`). Aşağıdaki tarihli sürüm notlarındaki sayılar o günkü ölçümlerdir; güncel sayı bu satırdır.
+**Test durumu:** 609/609 otomatik test geçti (13 Kasım 2026, `pnpm test`). Aşağıdaki tarihli sürüm notlarındaki sayılar o günkü ölçümlerdir; güncel sayı bu satırdır.
 
 # ATLAS Bulut V1
 
@@ -134,7 +134,7 @@ Komutlar depo kökünde, sırayla çalıştırılır:
 
 ```text
 pnpm install --frozen-lockfile   # bağımlılıkları kurar (lockfile değişmez)
-pnpm test                        # node --test ile 608 testi çalıştırır
+pnpm test                        # node --test ile 609 testi çalıştırır
 pnpm check                       # wrangler deploy --dry-run ile paketi doğrular
 pnpm preview                     # node scripts/preview.mjs ile yerel demoyu açar
 ```

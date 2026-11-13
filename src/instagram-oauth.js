@@ -3,7 +3,14 @@ import {reportError} from './log.js';
 import {parseMetaJSON} from './meta-json.js';
 const DEFAULT_ORIGIN='https://atlas-pasam-v1.pages.dev',DEFAULT_APP='1162087043047938';
 const SCOPES='instagram_business_basic,instagram_business_manage_insights';
-const PROVIDER_ORIGINS=new Set(['https://www.instagram.com','https://instagram.com','https://www.facebook.com','https://facebook.com']);
+// Meta's sign-in redirect can arrive from any of its own subdomains (www., m., l.,
+// web.…), so the allowlist is by domain, never by a fixed pair of hosts.
+const PROVIDER_DOMAINS=['instagram.com','facebook.com'];
+function providerRedirect(source){
+ if(source.protocol!=='https:')return false;
+ const host=source.hostname.toLowerCase();
+ return PROVIDER_DOMAINS.some(domain=>host===domain||host.endsWith('.'+domain));
+}
 const cookie=(value,age=600)=>`__Host-atlas-ig=${value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${age}`;
 const json=(body,status=200,extra={})=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Referrer-Policy':'no-referrer',...extra}});
 function publicOrigin(env){
@@ -23,8 +30,8 @@ function sameOriginStart(request,origin){
  const referer=request.headers.get('Referer');
  if(referer){
   let source;
-  try{source=new URL(referer).origin;}catch{return false;}
-  if(source!==origin&&!PROVIDER_ORIGINS.has(source))return false;
+  try{source=new URL(referer);}catch{return false;}
+  if(source.origin!==origin&&!providerRedirect(source))return false;
  }
  const site=request.headers.get('Sec-Fetch-Site');
  if(!site)return true;
