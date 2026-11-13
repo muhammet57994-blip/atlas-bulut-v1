@@ -6,5 +6,6 @@ node_modules/
 dist/
 .freebuff/
 coverage/
+work/
 *.log
 .DS_Store
