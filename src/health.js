@@ -4,6 +4,7 @@
 import {reportError} from './log.js';
 import {approvedModel} from './models.js';
 import {telemetrySnapshot} from './telemetry.js';
+import {dailyUsage} from './request-budget.js';
 
 // Migration ledger kept in code because the Worker cannot read migrations/ at
 // runtime. test/health.test.js re-reads the SQL files and fails if a name or a
@@ -29,7 +30,9 @@ export const MIGRATIONS = [
   {version: '0018', name: '0018_multi.sql', tables: ['atlas_multi_receipts']},
   // Retention migration: it only replaces delete triggers, so it creates no table.
   {version: '0019', name: '0019_retention.sql', tables: []},
-  {version: '0020', name: '0020_session_epoch.sql', tables: ['atlas_settings']}
+  {version: '0020', name: '0020_session_epoch.sql', tables: ['atlas_settings']},
+  // Index-only migration: it creates no table, so nothing is added to the required list.
+  {version: '0021', name: '0021_indexes.sql', tables: []}
 ];
 
 export const REQUIRED_TABLES = MIGRATIONS.flatMap(migration => migration.tables);
@@ -88,7 +91,9 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
       configured: typeof env?.GEMINI_API_KEY === 'string' && env.GEMINI_API_KEY.length > 0,
       approved: env?.GEMINI_MODEL === undefined || approvedModel(env.GEMINI_MODEL),
       // Per-isolate counters: quota replies and failures since the last cold start.
-      stats: telemetrySnapshot()
+      stats: telemetrySnapshot(),
+      // Durable per-day cap shared by every isolate.
+      daily: env?.MEMORY_DB ? await dailyUsage(env, now) : {used: 0, cap: null, day: null}
     },
     schema: {
       version: null,
