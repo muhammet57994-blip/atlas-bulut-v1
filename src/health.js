@@ -31,6 +31,7 @@ export const MIGRATIONS = [
 
 export const REQUIRED_TABLES = MIGRATIONS.flatMap(migration => migration.tables);
 export const SCHEMA_VERSION = MIGRATIONS.at(-1).version;
+const REQUIRED_TABLE_SET = new Set(REQUIRED_TABLES);
 
 function configurationReady(env) {
   return typeof env?.ATLAS_ACCESS_PASSWORD === 'string' && env.ATLAS_ACCESS_PASSWORD.length >= 20 &&
@@ -93,6 +94,7 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
       expected: REQUIRED_TABLES.length,
       applied: 0,
       missing: [...REQUIRED_TABLES],
+      unexpected: [],
       migrations: {applied: [], missing: [], ahead: []}
     },
     db: {reachable: false, latencyMs: null},
@@ -113,7 +115,10 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
       report.schema.missing = REQUIRED_TABLES.filter(name => !present.has(name));
       report.schema.appliedVersion = version;
       report.schema.source = ledger ? 'd1_migrations' : 'tables';
-      report.schema.upToDate = version === SCHEMA_VERSION && report.schema.missing.length === 0;
+      // A table the ledger never created means the database is ahead of this
+      // code, so it is named rather than silently ignored.
+      report.schema.unexpected = [...present].filter(name => !REQUIRED_TABLE_SET.has(name)).sort();
+      report.schema.upToDate = version === SCHEMA_VERSION && report.schema.missing.length === 0 && report.schema.unexpected.length === 0;
       report.schema.migrations = {applied: state.applied, missing: state.missing, ahead: state.ahead};
     } catch (error) {
       // The diagnosis itself must not fail the request, and the driver message is

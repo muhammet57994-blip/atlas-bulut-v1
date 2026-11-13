@@ -70,6 +70,7 @@ test('health needs no session and reports schema, database and model state',asyn
  assert.equal(body.schema.appliedVersion,SCHEMA_VERSION);
  assert.equal(body.schema.applied,REQUIRED_TABLES.length);
  assert.deepEqual(body.schema.missing,[]);
+ assert.deepEqual(body.schema.unexpected,[],'a database built from the migrations has no unknown atlas_ tables');
  assert.deepEqual(body.schema.migrations.missing,[]);
  assert.deepEqual(body.schema.migrations.ahead,[]);
  assert.deepEqual(body.schema.migrations.applied,MIGRATIONS.map(migration=>migration.name));
@@ -163,6 +164,26 @@ test('a complete D1 ledger reports the latest migration as the schema version',a
   assert.equal(body.schema.source,'d1_migrations');
   assert.equal(body.schema.upToDate,true);
   assert.equal(body.ok,true);
+ }finally{sql.close();}
+});
+
+test('atlas_ tables outside the migration ledger are named and fail the health check',async()=>{
+ const {sql,db}=database();
+ try{
+  sql.exec('CREATE TABLE atlas_future_feature(id INTEGER PRIMARY KEY)');
+  sql.exec('CREATE TABLE atlas_archive_extra(id INTEGER PRIMARY KEY)');
+  sql.exec('CREATE TABLE d1_migrations(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
+  const insert=sql.prepare('INSERT INTO d1_migrations(name) VALUES(?)');
+  for(const migration of MIGRATIONS)insert.run(migration.name);
+  const response=await get(createWorker(),env({MEMORY_DB:db}));
+  const body=await response.json();
+  assert.equal(body.schema.version,SCHEMA_VERSION,'every migration is still applied');
+  assert.equal(body.schema.source,'d1_migrations');
+  assert.deepEqual(body.schema.missing,[]);
+  assert.deepEqual(body.schema.unexpected,['atlas_archive_extra','atlas_future_feature'],'unknown tables are reported by name in a stable order');
+  assert.equal(body.schema.upToDate,false,'a database ahead of the code is not up to date');
+  assert.equal(body.ok,false);
+  assert.equal(response.status,503);
  }finally{sql.close();}
 });
 
