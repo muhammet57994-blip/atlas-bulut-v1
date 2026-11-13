@@ -10,10 +10,21 @@ function sameOriginStart(request){
  const origin=request.headers.get('Origin');
  if(origin&&origin!==ORIGIN)return false;
  const referer=request.headers.get('Referer');
- if(!referer)return true;
- let source;
- try{source=new URL(referer).origin;}catch{return false;}
- return source===ORIGIN||PROVIDER_ORIGINS.has(source);
+ if(referer){
+  let source;
+  try{source=new URL(referer).origin;}catch{return false;}
+  if(source!==ORIGIN&&!PROVIDER_ORIGINS.has(source))return false;
+ }
+ const site=request.headers.get('Sec-Fetch-Site');
+ if(!site)return true;
+ if(site==='same-origin'||site==='none')return true;
+ // Another *.pages.dev host is same-site for the browser, and the state cookie
+ // travels with Lax top-level GETs, so only Meta's own top-level redirect may
+ // arrive cross-site. Scripted cross-site fetches and same-site subdomains are
+ // refused before the state row is touched.
+ if(site!=='cross-site')return false;
+ if(origin)return false;
+ return request.headers.get('Sec-Fetch-Mode')==='navigate'&&(request.headers.get('Sec-Fetch-Dest')||'document')==='document';
 }
 async function hash(state,env){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(state+':'+env.SESSION_SECRET+':'+env.ATLAS_ACCESS_PASSWORD)))).map(b=>b.toString(16).padStart(2,'0')).join('');}
 export async function startInstagramOAuth(request,env){
