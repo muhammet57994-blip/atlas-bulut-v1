@@ -128,7 +128,7 @@ Hedef Cloudflare Workers Free + Gemini ücretsiz katmanıdır (3.5 Flash-Lite, 3
 
 ## Geliştirici komutları
 
-Node.js 24 ve pnpm 12 ile doğrulandı (testler `node:sqlite` kullandığı için Node 22 ve üzeri gerekir). Üretimde üçüncü taraf JavaScript paketi kullanılmaz; Wrangler yalnızca geliştirme/yayın aracıdır. Kurulumda `--ignore-scripts` kullanılmaz: esbuild ve workerd kurulum betikleri `pnpm-workspace.yaml` içindeki `allowBuilds` ile onaylıdır ve atlanırsa `pnpm test`/`wrangler` çalışmaz.
+Node.js 26.12.1 ve pnpm 12 ile doğrulandı (testler `node:sqlite` kullandığı için Node 22 ve üzeri gerekir); CI aynı sürüme sabitlenmiştir. Üretimde üçüncü taraf JavaScript paketi kullanılmaz; Wrangler yalnızca geliştirme/yayın aracıdır. Kurulumda `--ignore-scripts` kullanılmaz: esbuild ve workerd kurulum betikleri `pnpm-workspace.yaml` içindeki `allowBuilds` ile onaylıdır ve atlanırsa `pnpm test`/`wrangler` çalışmaz.
 
 Komutlar depo kökünde, sırayla çalıştırılır:
 
@@ -142,6 +142,28 @@ pnpm preview                     # node scripts/preview.mjs ile yerel demoyu aç
 `pnpm test` betiği `node --test` çalıştırır; komutu doğrudan vermek isterseniz depo kökünde `node --test` aynı sonucu verir. Tek bir dosyayı denemek için `node --test test/instagram-oauth.test.js` kullanılır.
 
 Demo parolası `atlas-yerel-demo-2026!` yalnızca yerel örnektir. Demo sunucusu gerçek Gemini’ye bağlanmaz ve yayın paketinin Worker koduna dahil değildir. Masaüstü sürümünü elle başlatmak için PowerShell 7’de `scripts/start-local.ps1` kullanılır; Node yolu bulunmalıdır. Bulut sürümünün yerel denemesinde `.dev.vars.example` dosyasını `.dev.vars` olarak kopyalayıp kendi güvenli yerel ortamınızda doldurun. Gerçek sırları ZIP’e koymayın.
+
+## Sağlık denetimi — `GET /api/health`
+
+Salt okunur ve oturum gerektirmeyen tek uç noktadır: izleme aracı, giriş yapılandırması veya şema eksikken bile sorunun nerede olduğunu görebilsin diye açıktır. Yalnızca `GET` kabul eder ve mevcut sohbet hız sınırını istemci başına `atlas-health@<istemci-IP>` anahtarıyla kullanır; sınır dolduğunda 429 ve “Sağlık kontrolü için bir dakika bekleyin.” döner.
+
+Yanıt alanları: `ok`, `service`, `version`, `ready`, `checkedAt`, `model.{configured,approved}`, `schema.{version,appliedVersion,expectedVersion,upToDate,source,expected,applied,missing,unexpected,migrations{applied,missing,ahead}}`, `db.{reachable,latencyMs}`.
+
+- `ok` yalnızca giriş yapılandırması tam, model onaylı, D1 erişilebilir ve şema güncelse `true` olur; aksi hâlde gövde aynı kalır ve HTTP **503** döner. Böylece aynı adres hem sağlıklı hem arızalı durumda okunabilir.
+- `model.approved`, `GEMINI_MODEL` dört onaylı ücretsiz modelden biriyse veya hiç ayarlanmamışsa `true`; başka bir değer `false` olur ve sohbet 503 ile kapalı kalır.
+- `schema.source` `d1_migrations` ise sürüm gerçek migration defterinden, `tables` ise tablo varlığından okunur. `missing` eksik migration tablolarını, `unexpected` bu kodun tanımadığı `atlas_*` tablolarını adlarıyla bildirir; `migrations.ahead` bir boşluğun ötesine uygulanmış dosyaları gösterir. Bu yüzden veritabanı koddan ilerideyse `ok:false` olur.
+- Kayıt sayısı, kayıt içeriği, sır ve ham veritabanı hata metni hiçbir zaman dönmez; veritabanı hatası yalnızca sunucu günlüğüne yazılır.
+
+Kısaltılmış örnek yanıt:
+
+```text
+GET https://atlas-pasam-v1.pages.dev/api/health
+
+{"ok":true,"service":"atlas","version":1,"ready":true,
+ "model":{"configured":true,"approved":true},
+ "schema":{"version":"0018","upToDate":true,"missing":[],"unexpected":[]},
+ "db":{"reachable":true,...},...}
+```
 
 ## Buluta yayın — yalnızca ayrı ve açık son onaydan sonra
 
