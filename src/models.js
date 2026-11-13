@@ -1,3 +1,5 @@
+import {retry, isTransientNetworkError, breaker} from './resilience.js';
+
 // Every id here is on Google's free tier, so a spent quota can move to the next
 // one without billing. Cheapest first; an approved configured model stays first.
 export const FREE_MODELS = Object.freeze([
@@ -27,21 +29,34 @@ export function modelUrl(model) {
 
 // Only a quota reply (429) moves to the next free model. A bad key, a refused
 // request or a server error stops at the first attempt, so nothing is multiplied
-// across models and no paid model is ever reached.
+// across models and no paid model is ever reached. Transient network errors are
+// retried once with backoff before giving up, and a tripped circuit breaker
+// fails fast instead of hammering an unreachable provider.
 export async function modelRequest(env, payload, {upstream = fetch, signal} = {}) {
   const chain = modelChain(env);
-  if (!chain.length) return {model: '', response: null, quotaExhausted: false};
-  let last;
-  for (const model of chain) {
-    const response = await upstream(modelUrl(model), {
-      method: 'POST',
-      redirect: 'manual',
-      signal,
-      headers: {'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY},
-      body: JSON.stringify(payload)
-    });
-    if (response.status !== 429) return {model, response, quotaExhausted: false};
-    last = {model, response, quotaExhausted: true};
+  if (!chain.length) return {model: '', response: null, quotaExhausted: false, circuitOpen: false};
+  const cb = breaker('gemini', {threshold: 5, resetMs: 30000});
+  if (cb.isOpen) return {model: '', response: null, quotaExhausted: false, circuitOpen: true};
+  try {
+    let last;
+    for (const model of chain) {
+      const response = await retry(
+        () => upstream(modelUrl(model), {
+          method: 'POST',
+          redirect: 'manual',
+          signal,
+          headers: {'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY},
+          body: JSON.stringify(payload)
+        }),
+        {attempts: 2, baseDelay: 100, factor: 3, shouldRetry: isTransientNetworkError}
+      );
+      if (response.status !== 429) { cb.recordSuccess(); return {model, response, quotaExhausted: false, circuitOpen: false}; }
+      last = {model, response, quotaExhausted: true, circuitOpen: false};
+    }
+    cb.recordSuccess();
+    return last;
+  } catch (error) {
+    cb.recordFailure();
+    throw error;
   }
-  return last;
 }

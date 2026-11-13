@@ -31,6 +31,7 @@ import {waitingCommand,waitingRequest,readWaiting} from './waiting.js';
 import {multiCommand,multiRequest} from './multi-actions.js';
 import {codeRequest,normalizeResearchResults,researchRequest,webSearchTool} from './research.js';
 import {reportError} from './log.js';
+import {resilientDb} from './resilience.js';
 import {healthSnapshot} from './health.js';
 const enc = new TextEncoder();
 const COOKIE = '__Host-atlas';
@@ -57,6 +58,26 @@ async function equal(a,b) { const [x,y]=await Promise.all([digest(a),digest(b)])
 // could spend the whole minute for everyone else. The edge-supplied client
 // address scopes the same cap per device; local bridge traffic carries no such
 // header and keeps a single shared key.
+// Same-origin gate for the JSON API. Origin/Referer/Sec-Fetch-* hints are advisory
+// browser metadata, but together they catch scripted cross-site requests and
+// foreign referers while staying permissive for legitimate same-origin fetches
+// and (absent headers) for curl/bridge traffic.
+function sameOriginRequest(request, origin) {
+  const reqOrigin = request.headers.get('Origin');
+  if (reqOrigin !== null && reqOrigin !== origin) return false;
+  const referer = request.headers.get('Referer');
+  if (referer) {
+    let source;
+    try { source = new URL(referer).origin; } catch { return false; }
+    if (source !== origin) return false;
+  }
+  const site = request.headers.get('Sec-Fetch-Site');
+  if (site === 'cross-site') return false;
+  if (site && site !== 'same-origin' && site !== 'same-site' && site !== 'none') return false;
+  const mode = request.headers.get('Sec-Fetch-Mode');
+  if (mode && mode !== 'cors' && mode !== 'navigate') return false;
+  return true;
+}
 function clientAddress(value) {
   if (/^(?:\d{1,3}\.){3}\d{1,3}$/u.test(value)) return value.split('.').every(octet => Number(octet) <= 255);
   return value.length <= 45 && value.split(':').length >= 3 && /^[0-9a-f:.]+$/u.test(value);
@@ -145,14 +166,14 @@ export function createWorker(upstream=fetch) {
         return json({authenticated:valid,ready:!!env.GEMINI_API_KEY},200,browserSession?{'Set-Cookie':cookie(await mint(env))}:{});
       }
       if(path==='/api/everyday'&&request.method==='GET'){
-        if(request.headers.get('Sec-Fetch-Site')==='cross-site'||request.headers.has('Origin')&&request.headers.get('Origin')!==url.origin)return fail('Bu kaynaktan işlem yapılamaz.',403);
+        if(!sameOriginRequest(request,url.origin))return fail('Bu kaynaktan işlem yapılamaz.',403);
         if(!await authenticated(request,env))return fail('Oturumunuz kapalı. Yeniden giriş yapın.',401);
         if(!(await env.CHAT_LIMIT.limit({key:rateKey(request,'atlas-everyday-read')})).success)return fail('Efendim, bütçe ve beklenenler için biraz bekleyip yenileyin.',429);
         if([...url.searchParams.keys()].some(k=>k!=='month')||url.searchParams.getAll('month').length>1)return fail('Efendim, görüntülenecek tek bir ay seçin.',400);
         return everydaySnapshot(url.searchParams.has('month')?{month:url.searchParams.get('month')}:{},env,requestId);
       }
       if(request.method!=='POST') return fail('Yöntem desteklenmiyor.',405);
-      if(request.headers.get('Origin')!==url.origin || request.headers.get('Sec-Fetch-Site')==='cross-site') return fail('Bu kaynaktan işlem yapılamaz.',403);
+      if(!sameOriginRequest(request,url.origin)) return fail('Bu kaynaktan işlem yapılamaz.',403);
       if(path==='/api/logout') return json({ok:true},200,{'Set-Cookie':cookie('',0)});
       if(path==='/api/login') {
         if(!(await env.LOGIN_LIMIT.limit({key:rateKey(request,'atlas-login')})).success) return fail('Çok fazla giriş denemesi. Bir dakika bekleyin.',429);
@@ -329,6 +350,7 @@ export function createWorker(upstream=fetch) {
               ...(research?{tools:[webSearchTool(latest)]}:{}),
               generationConfig:{maxOutputTokens:research?2048:profile.maxOutputTokens}
             },{upstream,signal:controller.signal});
+          if(call.circuitOpen)return {status:503,body:{error:'Efendim, yapay zeka servisi şu anda yanıt vermiyor. Bir dakika sonra tekrar deneyin.'}};
           const result=call.response;
           if(!result?.ok){reportError({stage:'model.chat.provider',requestId,error:{name:'ProviderError',status:result.status},meta:{provider:'gemini'}});
             if(result.status===429){const hint=quotaHint(result.headers);return {status:429,body:{error:'Efendim, ücretsiz Gemini modellerinin kullanım sınırına ulaşıldı. Biraz sonra yeniden deneyebilirsiniz.',...hint},headers:{'Retry-After':String(hint.retryRecommendation)}};}
@@ -353,6 +375,8 @@ export function createWorker(upstream=fetch) {
   }};
   return {async fetch(request,env){
     const requestId=crypto.randomUUID();
+    // One transient-failure layer for every D1 read and write reached through env.
+    if(env?.MEMORY_DB)env={...env,MEMORY_DB:resilientDb(env.MEMORY_DB)};
     let response;
     try{response=await worker.fetch(request,env,requestId);}
     catch(error){reportError({stage:'worker.crash',requestId,error});response=fail('İşlem tamamlanamadı. Lütfen yeniden deneyin.',503);}
