@@ -23,7 +23,7 @@ jobs:
       - name: Node kur
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 26.12.1
           cache: pnpm
 
       - name: Bağımlılıkları kur

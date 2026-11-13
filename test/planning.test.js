@@ -1,5 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';import {readFileSync} from 'node:fs';
 import {planningCommand,runPlanning,savePlan} from '../src/planning.js';import {runTaskCommand,listTasks} from '../src/tasks.js';import {runCalendar} from '../src/calendar.js';import {createWorker} from '../src/worker.js';
+import {FREE_MODELS} from '../src/models.js';
 const now=new Date('2026-10-24T12:00:00Z');
 function env(){const sql=new DatabaseSync(':memory:');for(const f of ['0001_memory.sql','0002_tasks.sql','0006_organizer.sql','0007_plans.sql'])sql.exec(readFileSync(new URL('../migrations/'+f,import.meta.url),'utf8'));return {SESSION_SECRET:'s'.repeat(40),GEMINI_API_KEY:'private-key',MEMORY_DB:{prepare(q){const s=sql.prepare(q);let args=[];return {bind(...a){args=a;return this;},async first(){return s.get(...args)||null;},async all(){return {results:s.all(...args)};},async run(){return {meta:s.run(...args)};}};}}};}
 const noModel=()=>{throw Error('Unexpected external call');};
@@ -31,7 +32,7 @@ test('content package uses exactly one bounded existing-model call with only cho
 });
 test('quota and truncated model output never save or return approvable draft',async()=>{
  const e=env();await runCalendar(e.MEMORY_DB,'Takvime yarın reels: Deneme',now);
- for(const reply of [new Response('private-key',{status:429}),Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'eksik'}]}}]})]){let calls=0;const r=await runPlanning('İçerik paketi hazırla',e,async()=>{calls++;return reply;},now);assert.equal(calls,1);assert.equal(r.planDraft,undefined);assert.ok(!JSON.stringify(r).includes('private-key'));}assert.equal(await count(e),0);
+ for(const reply of [new Response('private-key',{status:429}),Response.json({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'eksik'}]}}]})]){let calls=0;const r=await runPlanning('İçerik paketi hazırla',e,async()=>{calls++;return reply;},now);assert.equal(calls,reply.status===429?FREE_MODELS.length:1);assert.equal(r.planDraft,undefined);assert.ok(!JSON.stringify(r).includes('private-key'));}assert.equal(await count(e),0);
 });
 test('weekly review uses real completion events and comparable saved IDs, preserves unknown values',async()=>{
  const e=env();await runTaskCommand(e.MEMORY_DB,'Listeye iş ekle',now);await runTaskCommand(e.MEMORY_DB,'Görev 1 tamamlandı',now);

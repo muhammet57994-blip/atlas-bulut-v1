@@ -2,8 +2,7 @@
 // schema matches migrations/ and whether the approved free model is configured.
 // Never returns record counts, record content, secrets or raw database error text.
 import {reportError} from './log.js';
-
-const APPROVED_MODEL = 'gemini-3.5-flash-lite';
+import {approvedModel} from './models.js';
 
 // Migration ledger kept in code because the Worker cannot read migrations/ at
 // runtime. test/health.test.js re-reads the SQL files and fails if a name or a
@@ -83,7 +82,7 @@ export async function healthSnapshot(env, {now = new Date(), requestId = ''} = {
     ready: configurationReady(env),
     model: {
       configured: typeof env?.GEMINI_API_KEY === 'string' && env.GEMINI_API_KEY.length > 0,
-      approved: env?.GEMINI_MODEL === undefined || env?.GEMINI_MODEL === APPROVED_MODEL
+      approved: env?.GEMINI_MODEL === undefined || approvedModel(env.GEMINI_MODEL)
     },
     schema: {
       version: null,

@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {analyzeVisual,validVisual} from '../src/vision.js';
+import {FREE_MODELS} from '../src/models.js';
 const jpeg={mimeType:'image/jpeg',data:Buffer.from([255,216,255,224,0,0,0,0,255,217]).toString('base64')};
 const png={mimeType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN1sAAAAASUVORK5CYII='};
 const webpBytes=Buffer.from([82,73,70,70,12,0,0,0,87,69,66,80,86,80,56,76,0,0,0,0]);
@@ -34,7 +35,7 @@ test('invalid requests and unsupported configuration never call upstream',async(
 });
 
 test('provider errors are sanitized with no retries or fallback',async()=>{
- for(const status of [429,500,302]){let calls=0;const result=await analyzeVisual(body,env,async()=>{calls++;return new Response('private-secret',{status});});assert.equal(calls,1);assert.equal(result.status,status===429?429:502);assert.ok(!JSON.stringify(result).includes('private-secret'));}
+ for(const status of [429,500,302]){let calls=0;const result=await analyzeVisual(body,env,async()=>{calls++;return new Response('private-secret',{status});});assert.equal(calls,status===429?FREE_MODELS.length:1,status===429?'quota walks the free chain':'other failures stop at once');assert.equal(result.status,status===429?429:502);assert.ok(!JSON.stringify(result).includes('private-secret'));}
  const result=await analyzeVisual(body,env,async()=>{throw new Error('private-secret');});assert.equal(result.status,502);assert.ok(!result.error.includes('private-secret'));
 });
 

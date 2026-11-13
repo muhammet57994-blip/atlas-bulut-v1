@@ -1,5 +1,6 @@
 import {parseMetaJSON} from './meta-json.js';
 import {reportError} from './log.js';
+import {modelChain,modelRequest} from './models.js';
 const USER='celik38__', ID='17841407597588263';
 const SCOPES=['instagram_business_basic','instagram_business_manage_insights'];
 const enc=new TextEncoder();
@@ -92,8 +93,8 @@ export async function instagramAccount(action,body,env,upstream=fetch,requestId=
   const period=new Date(since*1000).toISOString().slice(0,10)+' – '+new Date(until*1000).toISOString().slice(0,10)+' (UTC, bitiş hariç)';
   const facts=metrics.map(m=>m.label+': '+(m.value===null?'veri alınamadı':m.value.toLocaleString('tr-TR'))).join('. ');
   let advice='Karşılaştırmalı dönem olmadan performansa iyi veya kötü diyemem. Bir sonraki hafta aynı ölçütlerle karşılaştıralım.';
-  if(!body?.skipAdvice&&metrics.some(m=>m.value!==null)&&env.GEMINI_API_KEY&&(!env.GEMINI_MODEL||env.GEMINI_MODEL==='gemini-3.5-flash-lite')){
-   try{const r=await upstream('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json','x-goog-api-key':env.GEMINI_API_KEY},body:JSON.stringify({systemInstruction:{parts:[{text:'Türkçe en fazla 250 karakterlik doğal öneri yaz. Yalnızca verilen sayılara dayan. Karşılaştırma yok; iyi/kötü oran, profil kusuru, büyüme garantisi veya en iyi saat uydurma. Tek ölçülebilir içerik deneyi öner. Eksik değer sıfır değildir. Araçların yok.'}]},contents:[{role:'user',parts:[{text:JSON.stringify({period,metrics})}]}],generationConfig:{maxOutputTokens:200}})});if(r.ok){const d=await r.json(),t=d.candidates?.[0]?.content?.parts?.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');if(t)advice=t.slice(0,280);}}catch{}
+  if(!body?.skipAdvice&&metrics.some(m=>m.value!==null)&&env.GEMINI_API_KEY&&modelChain(env).length){
+   try{const call=await modelRequest(env,{systemInstruction:{parts:[{text:'Türkçe en fazla 250 karakterlik doğal öneri yaz. Yalnızca verilen sayılara dayan. Karşılaştırma yok; iyi/kötü oran, profil kusuru, büyüme garantisi veya en iyi saat uydurma. Tek ölçülebilir içerik deneyi öner. Eksik değer sıfır değildir. Araçların yok.'}]},contents:[{role:'user',parts:[{text:JSON.stringify({period,metrics})}]}],generationConfig:{maxOutputTokens:200}},{upstream,signal:AbortSignal.timeout(15000)});const r=call.response;if(r?.ok){const d=await r.json(),t=d.candidates?.[0]?.content?.parts?.filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');if(t)advice=t.slice(0,280);}}catch{}
   }
   return {status:200,connected:true,username:USER,period,metrics,text:('Efendim, son 7 tamamlanmış gün: '+facts+'. '+advice).slice(0,600)};
  }catch(error){reportError({stage:'instagram.account',requestId,error,meta:{provider:'meta'}});return safeError(error);}

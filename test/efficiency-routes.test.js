@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFileSync,readdirSync} from 'node:fs';
 import {createWorker} from '../src/worker.js';
+import {FREE_MODELS} from '../src/models.js';
 const origin='https://atlas.example',password='test-password-at-least-twenty';
 const allow={limit:async()=>({success:true})};
 function environment(){return {ATLAS_ACCESS_PASSWORD:password,SESSION_SECRET:'session-secret-at-least-thirty-two-characters',GEMINI_API_KEY:'FAKE_KEY',LOGIN_LIMIT:allow,CHAT_LIMIT:allow,ASSETS:{fetch:async()=>new Response('asset')}};}
@@ -40,7 +41,7 @@ test('profiles shape ordinary model requests without accepting free text instruc
 test('provider quota errors are sanitized, not retried or cached, with bounded retry suggestion',async()=>{
   let calls=0;const w=createWorker(async()=>{calls++;return new Response('FAKE_KEY provider private details',{status:429,headers:{'Retry-After':'120'}});}),e=environment(),cookie=await login(w,e);
   for(let i=0;i<2;i++){const r=await chat(w,e,cookie);assert.equal(r.status,429);assert.equal(r.headers.get('Retry-After'),'120');const body=await r.json();assert.equal(body.retryRecommendation,120);assert.doesNotMatch(body.error,/FAKE_KEY|private|günlük/);}
-  assert.equal(calls,2);
+  assert.equal(calls,FREE_MODELS.length*2,'each request walks the free chain once and no answer is cached');
 });
 
 test('center route preserves authentication, origin, rate and size protections without a model',async()=>{
@@ -51,7 +52,7 @@ test('center route preserves authentication, origin, rate and size protections w
   assert.equal((await w.fetch(request('/api/center',{}, {Cookie:cookie,Origin:'https://evil.example'}),e)).status,403);
   assert.equal((await w.fetch(request('/api/center',{}, {Cookie:cookie}),{...e,CHAT_LIMIT:{limit:async()=>({success:false})}})).status,429);
   assert.equal((await w.fetch(request('/api/center',{padding:'x'.repeat(40000)},{Cookie:cookie}),e)).status,413);
-  const r=await w.fetch(request('/api/center',{}, {Cookie:cookie}),e);assert.equal(r.status,200);assert.equal((await r.json()).center.modelCalled,false);assert.ok(keys.includes('atlas-center'));
+  const r=await w.fetch(request('/api/center',{}, {Cookie:cookie}),e);assert.equal(r.status,200);assert.equal((await r.json()).center.modelCalled,false);assert.ok(keys.includes('atlas-center@shared'));
   for(const [text,opens] of [['Merkezimi aç',true],['Bana durum özeti ver',false],['Bugün neye odaklanayım',false]]){
     const response=await chat(w,e,cookie,{responseStyle:'detailed'},text);assert.equal(response.status,200);const body=await response.json();assert.equal(body.openCenter,opens?true:undefined);assert.match(body.text,/Efendim/);assert.equal(body.center.modelCalled,false);
   }
